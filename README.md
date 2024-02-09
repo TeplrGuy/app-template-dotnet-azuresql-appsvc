@@ -242,18 +242,18 @@ Applications and Functions hosted on Azure App service may exhibit one or more o
 
 ### Troubleshooting steps
 1. Check SNAT Port Exhaustion Detector to identify spikes: 
-  ![alt text](image.png)
+  ![alt text](./assets/image.png)
 
   SNAT Pending and failed connections will have a spike, even one failed SNAT connection is a symptom of a possible upcoming issue:
-  ![alt text](image-1.png)
+  ![alt text](./assets/image-1.png)
 
   Another example:
-  ![alt text](image-2.png)
+  ![alt text](./assets/image-2.png)
 
   SNAT Port usage going above 128 is usually an indication the application is opening too many connections.
 
 2. Check Application Insights for common errors
-  ![alt text](image-3.png)
+  ![alt text](./assets/image-3.png)
 
 3. Take a .Net profiler trace to identity any slow requests or endpoints.
 
