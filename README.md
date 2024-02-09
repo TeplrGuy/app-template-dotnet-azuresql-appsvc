@@ -211,51 +211,105 @@ Now, you had an hands on introduction to .NET web applications and deployment on
 2. [Azure App Service Landing Zone Accelerator](https://github.com/Azure/appservice-landing-zone-accelerator) has deployment architecture guidance for hardening and scaling Azure App Service deployments.
 
 
-## Reproduce SNAT Port Exhaustion
-This branch has been modified to simulate SNAT Port Exhaustion scenario on App Service.
+## Reproduce High CPU
+This branch has been modified to simulate high CPU scenario on App Service.
 
-To produce this issue after a successfully deployment of this branch, you will need to start up the load test by providing the host name of the application as indicated in the Load Testing step. 
+To produce this issue after a successfully deployment of this branch, you will need to start up the load test by providing the host name of the application as indicated in the Load Testing step after a successful deployment. 
 
-## SNAT Port Exhaustion
-* SNAT exhaustion in Azure App Service refers to the depletion of Source Network Address Translation (SNAT) ports available for outbound connections.
-* SNAT is a technique used to map multiple private IP addresses to a single public IP address. 
-* SNAT exhaustion will impact the communication of your Azure App Service with external resources.
+## High CPU
+[More information on CPU Analysis](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/cpu-analysis)
+
+### Possible causes
+* **Application code**: inefficient or resource-intensive code can consume a large amount of CPU resources, leading to high CPU usage.
+* **Traffic Spikes**: A sudden increase in user traffic or concurrent requests can overload the server and cause high CPU usage. 
+* **Background tasks**: If your application performs heavy background processing or long-running tasks, it can consume significant CPU resources. 
+* **Third-Party integrations**: Poorly optimized or inefficient third-party integrations can also contribute to high CPU usage.
+* **Configuration issues**: Incorrect configuration settings, such as excessive logging or unnecessary debugging options, can lead to high CPU utilization. 
+* **Resource limitations**: If your App Service Plan is under-provisioned or lacks sufficient resources, it can result in high CPU usage.
+
 ### Symptoms
 Applications and Functions hosted on Azure App service may exhibit one or more of the following symptoms:
-* Slow response times on all or some of the instances in a service plan.
-* Intermittent 5xx or Bad Gateway errors
-* Intermittent 400 errors (Client Gone)
-* Timeout error messages
-* Connectivity issues to external endpoints (like SQLDB, Service Fabric, other App services etc.)
+* **Slow response times**: the application may respond slowly to user requests. This can manifest as delayed page loads, sluggish navigation, or unresponsive actions.
+* **Increased response times for background tasks**: high CPU usage can lead to longer execution times for these tasks. You may notice delays in processing or completion of background operations.
+* **Decreased application performance**: other system resources may be impacted, leading to decreased overall application performance. Such as slow database queries, increased memory usage, or network congestion.
+* **Application errors or crashes**: In extreme cases of high CPU usage, the application may encounter errors or crash altogether. This can happen when the CPU is overwhelmed and cannot handle the workload, resulting in instability or failures.
 
 
 ### Scoping 
 1. What symptoms above is the application seeing? 
-2. Are there multiple applications running on the App Service Plan? Single instance?
-3. Is the application making any outbound calls that is slow or ? 
+2. Are there multiple applications running on the App Service Plan? Single instance? Size on the instance? Seeing high CPU across all instances?
+3. Is the application making any outbound calls that is slow or is it CPU intensive? 
    + Check Application Map and Performance blade In App Insights to identify this quickly
-3. How is CPU and Memory usage? 
+4. Seeing any specific errors? 5xx? slowness?
+   + Note: the high CPU and memory could be due to SNAT.
+5. How is CPU and Memory usage? 
    + Check High CPU and High Memory detectors in Diagnose and Solve. 
    + Check Live Metrics in Application Insights to see real time resource usage and errors
-
-    C-->D;
+6. Confirm how many containers are in each app
+    + This can be done using Linux - Number of Running Containers per Host detector for Linux App Service
+7. When the issue is not occurring what is the CPU usage vs now? Intermittent?
 
 ### Troubleshooting steps
-1. Check SNAT Port Exhaustion Detector to identify spikes: 
-  ![alt text](image.png)
+1. Check Availability and performance detectors: 
+    The overview page will show you a quick peek to your app performance and identify patterns. As of now you will not see the CPU usage and Memory usage in  Overview blade.
+      ![alt text](./assets/image-6.png)
 
-  SNAT Pending and failed connections will have a spike, even one failed SNAT connection is a symptom of a possible upcoming issue:
-  ![alt text](image-1.png)
+    The High CPU analysis for Windows or CPU Usage for Linux detector will help you identify Overall CPU usage per instance.
+      ![alt text](./assets/image-7.png)
 
-  Another example:
-  ![alt text](image-2.png)
+    The detector checks App Service Plan density to ensure there are not too many instances. Similarly you can use the App Service Plan Density Check
+    detector to identity the same 
+      ![alt text](./assets/image-77.png)
 
-  SNAT Port usage going above 128 is usually an indication the application is opening too many connections.
+    For Linux apps you can use the Linux CPU Drill Down detector to identity which process is causing the high CPU.
+      ![alt text](./assets/image-100.png)
 
-2. Check Application Insights for common errors
-  ![alt text](image-3.png)
+    With this information, you can go ahead and skip to step 4 where you can either take a profiler trace or a memory dump to further analyze if the process causing the high CPU is your application. If it is not, please do reach out to Microsoft Support.
+    
+    Knowing which instance showing signs of high CPU will at the very least help you know which instance you can profile if needed.
+    At this point what you can do is continue to check other warnings the platform is providing you and see if you can mitigate the high CPU. 
+    Note: Before applying any mitigation steps, consider taking a profiler and or memory dump of the problematic  instance before applying mitigation.
 
-3. Take a .Net profiler trace to identity any slow requests or endpoints.
+2. Check Application Insights for common errors if enabled and identity which instance we need to focus on. 
+      If all the instances are seeing high CPU, then go to the mitigation steps and try some of those steps to see if it helps.
+
+      Live Metrics can provide you with real time CPU utilization. This tells me the CPU utilization is likely caused by what ever application process is running on that container
+        ![alt text](./assets/image-8.png)
+
+    From there if you get really curios you can go to the kudu console of the application add https://<App Name Goes Here>.scm.azurewebsites.net/newui to the kudu URL, Switch instance -> select the different instances -> WebSSH 
+      ![alt text](./assets/image-10.png)
+
+    The ID 547eb31e1163 is the container id that we saw earlier in Live Streams showing signs of High CPU.
+      
+    You can then run the top command to further confirm the process causing the high CPU
+    ```
+    top
+    ```
+    ![alt text](./assets/image-9.png)
+
+    Will Help identify which app is consuming most of the service plan overall CPU
+    ![alt text](./assets/image-88.png)
+
+3. Take a .Net profiler trace to identity any slow requests or endpoints. The platform can analyze ans present results for your review.
+
+   ![alt text](./assets/image-66.png)
+
+   The tool is able to identity the root cause of the high CPU in most cases
+   ![alt text](./assets/image-111.png)
+
+## Mitigation
+1. Restart
+    + Advance restart the application process using Diagnostic tools in Diagnose and solve. Restart the whole application if all instances are seeing high CPU.
+    + Reboot Worker API
+        + The [Reboot Worker API](https://learn.microsoft.com/en-us/rest/api/appservice/app-service-plans/reboot-worker?view=rest-appservice-2022-03-01)  can be used if we are unable to the two methods above or if we suspect a platform issue. Note that there are restrictions on how many instances can be replaced in this manner and doing so also prevents us from isolating application vs. platform issues.
+
+    + Alternate restart methods:
+    [Connect to kudu of specific instance and use process explorer to kill the process manually.](https://blogs.msdn.microsoft.com/kaushal/2016/11/21/azure-app-service-how-to-connect-to-the-kudu-site-of-a-specific-instance/)
+    [You can also use PowerShell script to manually kill worker process.](https://gist.github.com/karansinghkushwah/9c61121637ea05ce68c7d38ee27cf192#file-run-ps1) 
+
+2. Scale
+    + Consider scaling up to a larger SKU and or scale out. Sometime depending on the scenario this will be a very useful way to mitigate the issue or even resolve the issue.
+
 
 ## Contributing
 

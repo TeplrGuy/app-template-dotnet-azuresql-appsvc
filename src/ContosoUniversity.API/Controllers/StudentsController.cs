@@ -57,7 +57,7 @@ namespace ContosoUniversity.API.Controllers
                 Pages = totalPages,
                 CurrentPage = pageNumber + 1
             };
-
+            Fibonacci(pageNumber);
             return Ok(result);
             
         }
@@ -86,12 +86,14 @@ namespace ContosoUniversity.API.Controllers
                     // Introduce CPU-intensive operation
                     for (int i = 0; i < 10000; i++)
                     {
-                        string result = new string('a', 10000); // Creating a large string and should also increase memory.
+                        Fibonacci(i); // Creating a large string and should also increase memory.
                     }
                 }
 
-                // Execute the query and return the result
-                return query.ToList();
+                // Materialize the query to a list to execute it
+               var result = query.ToList();
+                
+                return result;
              });
 
             if (students == null)
@@ -118,6 +120,16 @@ namespace ContosoUniversity.API.Controllers
             };
 
             return Ok(result);
+        }
+
+
+        // Function to perform CPU-intensive operation
+        int Fibonacci(int n)
+        {
+            if (n <= 1)
+                return n;
+            else
+                return Fibonacci(n - 1) + Fibonacci(n - 2);
         }
 
         // GET: api/Students/5
