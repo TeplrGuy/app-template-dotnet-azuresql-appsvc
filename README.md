@@ -261,7 +261,7 @@ Applications and Functions hosted on Azure App service may exhibit one or more o
     detector to identity the same 
       ![alt text](./assets/image-77.png)
 
-    For Linux apps you can use the Linux CPU Drill Down detector to identity which process is causing the high CPU.
+    For Linux apps you can use the Linux CPU Drill Down detector to identity which process is causing the high CPU. You are able to easily correlate the instance to the the process causing high CPU in this view. There should be something similar for Windows.
       ![alt text](./assets/image-100.png)
 
     With this information, you can go ahead and skip to step 4 where you can either take a profiler trace or a memory dump to further analyze if the process causing the high CPU is your application. If it is not, please do reach out to Microsoft Support.
@@ -287,16 +287,15 @@ Applications and Functions hosted on Azure App service may exhibit one or more o
     ```
     ![alt text](./assets/image-9.png)
 
-    Will Help identify which app is consuming most of the service plan overall CPU
-    ![alt text](./assets/image-88.png)
+    Here to correlate the ID , on the kudu console in the above screenshot -> Click on the menu Environment -> find COMPUTER_NAME variable and the value will be the instance profile. 
 
-3. Take a .Net profiler trace to identity any slow requests or endpoints. The platform can analyze ans present results for your review.
-
+3. Take a .Net profiler trace to identity any slow requests or endpoints. The platform can analyze ans present results for your review. You can correlate the instance by following any of the steps above. Note: You can profile all instances but its usually best to identity the instance causing the issue. Taking a profiler trace or memory dump may increase resource util by 1%-5%
    ![alt text](./assets/image-66.png)
 
    The tool is able to identity the root cause of the high CPU in most cases
    ![alt text](./assets/image-111.png)
 
+  
 ## Mitigation
 1. Restart
     + Advance restart the application process using Diagnostic tools in Diagnose and solve. Restart the whole application if all instances are seeing high CPU.
