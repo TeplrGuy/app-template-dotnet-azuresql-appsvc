@@ -241,7 +241,7 @@ Applications and Functions hosted on Azure App service may exhibit one or more o
     C-->D;
 
 ### Troubleshooting steps
-1. Check SNAT Port Exhaustion Detector to identify spikes: 
+1. Check SNAT Port Exhaustion Detector to identify spikes. If you don't see spikes and see consistent # of established connections over a few hours indicates the code is likely using connection pooling. if we see spikes and or pending/failed port usage then we will need to repro and take a .Net profiler trace to identify the root cause
   ![alt text](./assets/image.png)
 
   SNAT Pending and failed connections will have a spike, even one failed SNAT connection is a symptom of a possible upcoming issue:
@@ -250,12 +250,26 @@ Applications and Functions hosted on Azure App service may exhibit one or more o
   Another example:
   ![alt text](./assets/image-2.png)
 
-  SNAT Port usage going above 128 is usually an indication the application is opening too many connections.
+  [SNAT](https://4lowtherabbit.github.io/blogs/2019/10/SNAT/) Port usage going above 128 is usually an indication the application is opening too many connections.
 
-2. Check Application Insights for common errors
-  ![alt text](./assets/image-3.png)
+2. Check Application Insights for common errors. We can use Application insights Performance blade to learn more about the symptoms of the issue to see if it matches any of the once we mentioned above
 
-3. Take a .Net profiler trace to identity any slow requests or endpoints.
+    Application Insights actually shows an exception that shows which part of the code that could be problematic:
+      ![alt text](./assets/image-3.png)
+
+3. Take a .Net profiler trace to identify any slow requests or endpoints. To take a trace, visit the web app -> Diagnose and solve problems -> Diagnostic Tools -> Collect .NET Profiler Trace -> follow instructions to take the trace and the platform will analyze for you. 
+Example:
+
+### Mitigation
+Things to consider to avoid SNAT: [Troubleshooting intermittent outbound connection errors in Azure App Service - Azure App Service | Microsoft Learn](https://learn.microsoft.com/en-us/azure/app-service/troubleshoot-intermittent-outbound-connection-errors#avoiding-the-problem)
+connection pools: By pooling your connections, you avoid opening new network connections for calls to the same address and port.
+* **Scale out and up if needed**: Adding an additional instance means you get more SNAT ports to use but if issue is not resolve the same symptoms are likely to appear on the newly added instances.
+* **Service endpoints**: You don't have a SNAT port restriction to the services secured with service endpoints.
+* **Private endpoints**: You don't have a SNAT port restriction to services secured with private endpoints.
+* **NAT gateway** : With a NAT gateway, you have 64k outbound SNAT ports that are usable by the resources sending traffic through it
+
+### Next Steps
+ Consider reviewing the application code and ensure to use connection pooling. It is generally a good practice even if you are using networking options above.
 
 ## Contributing
 
