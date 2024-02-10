@@ -211,21 +211,41 @@ Now, you had an hands on introduction to .NET web applications and deployment on
 2. [Azure App Service Landing Zone Accelerator](https://github.com/Azure/appservice-landing-zone-accelerator) has deployment architecture guidance for hardening and scaling Azure App Service deployments.
 
 
-## Reproduce High CPU
-This branch has been modified to simulate high CPU scenario on App Service.
+## Reproduce slow requests
+This branch has been modified to simulate slow requests scenario on App Service.
 
 To produce this issue after a successfully deployment of this branch, you will need to start up the load test by providing the host name of the application as indicated in the Load Testing step after a successful deployment. 
 
-## High CPU
-[More information on CPU Analysis](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/cpu-analysis)
+## Slow requests
+Slow performance – Important tools
+* Profiler: [Enable Profiler for Azure App Service apps - Azure Monitor | Microsoft Learn](https://learn.microsoft.com/en-us/azure/azure-monitor/profiler/profiler)
+* Profiler will enable Code optimization for your application: [Troubleshoot Code Optimizations (Preview) - Azure | Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/azure/azure-monitor/app-insights/code-optimizations-troubleshooting) 
+* Understand the metrics: [Monitor apps - Azure App Service | Microsoft Learn](https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor#understand-metrics)
+* Some of the metrics that you might want to monitor for your app are
+    Average memory working set
+    Response time
+    CPU time
+    Memory working set
+    Requests
+Important, you can always filter on instance level, this way you can check if the issue is only present on one instance.
+* Detectors
+  * Web App Slow
+
 
 ### Possible causes
-* **Application code**: inefficient or resource-intensive code can consume a large amount of CPU resources, leading to high CPU usage.
-* **Traffic Spikes**: A sudden increase in user traffic or concurrent requests can overload the server and cause high CPU usage. 
-* **Background tasks**: If your application performs heavy background processing or long-running tasks, it can consume significant CPU resources. 
-* **Third-Party integrations**: Poorly optimized or inefficient third-party integrations can also contribute to high CPU usage.
-* **Configuration issues**: Incorrect configuration settings, such as excessive logging or unnecessary debugging options, can lead to high CPU utilization. 
-* **Resource limitations**: If your App Service Plan is under-provisioned or lacks sufficient resources, it can result in high CPU usage.
+* High # of Apps in ASP
+  + Scale-Up or Isolate apps to different ASPs.
+* Spike in Traffic
+  + Consider scaling out to handle unexpected traffic
+* High CPU/Memory
+  + Check if issues are related to platform services or application code.
+* Network Latency
+  + Check if the application is making calls to a database or API. If so, profile their application using Application Insights or other APM to help identify if responses from the endpoint are slower than expected.
+* High Load
+  + High number of processes are waiting for CPU. Consider CPU allocated to for the Container App
+* High I/O Wait
+  + High I/O wait can cause slow performance for your application, because it is taking too much time to read/write data.
+
 
 ### Symptoms
 Applications and Functions hosted on Azure App service may exhibit one or more of the following symptoms:
@@ -240,61 +260,67 @@ Applications and Functions hosted on Azure App service may exhibit one or more o
 2. Are there multiple applications running on the App Service Plan? Single instance? Size on the instance? Seeing high CPU across all instances?
 3. Is the application making any outbound calls that is slow or is it CPU intensive? 
    + Check Application Map and Performance blade In App Insights to identify this quickly
-4. Seeing any specific errors? 5xx? slowness?
-   + Note: the high CPU and memory could be due to SNAT.
+4. Seeing any specific errors and requests?
+   + Note: the high CPU and memory could be due to SNAT which can show signs of slowness
 5. How is CPU and Memory usage? 
    + Check High CPU and High Memory detectors in Diagnose and Solve. 
    + Check Live Metrics in Application Insights to see real time resource usage and errors
 6. Confirm how many containers are in each app
     + This can be done using Linux - Number of Running Containers per Host detector for Linux App Service
 7. When the issue is not occurring what is the CPU usage vs now? Intermittent?
+8. Check if all clients are affected
+9. Can the issue be reproduced?
+10. Is the application in a hung state?
 
 ### Troubleshooting steps
-1. Check Availability and performance detectors: 
+
+Quickly check Application Insights, Web App Down and Web App Slow detectors. Check Performance, Live Metrics, Failures... Move on to the steps below if further analysis is needed.
+
+1. Check if the slowness is on the client side: 
     The overview page will show you a quick peek to your app performance and identify patterns. As of now you will not see the CPU usage and Memory usage in  Overview blade.
-      ![alt text](./assets/image-6.png)
+    + Clients can include but not limited to: 
+    + Browsers 
+    + Other Applications/services making calls into App Services. 
+    + Other Services such as Application Gateway, Front Door, CDNs, 3rd Party solutions or intermediate devices.
 
-    The High CPU analysis for Windows or CPU Usage for Linux detector will help you identify Overall CPU usage per instance.
-      ![alt text](./assets/image-7.png)
-
-    The detector checks App Service Plan density to ensure there are not too many instances. Similarly you can use the App Service Plan Density Check
-    detector to identity the same 
-      ![alt text](./assets/image-77.png)
-
-    For Linux apps you can use the Linux CPU Drill Down detector to identity which process is causing the high CPU. You are able to easily correlate the instance to the the process causing high CPU in this view. There should be something similar for Windows.
-      ![alt text](./assets/image-100.png)
-
-    With this information, you can go ahead and skip to step 4 where you can either take a profiler trace or a memory dump to further analyze if the process causing the high CPU is your application. If it is not, please do reach out to Microsoft Support.
-    
-    Knowing which instance showing signs of high CPU will at the very least help you know which instance you can profile if needed.
-    At this point what you can do is continue to check other warnings the platform is providing you and see if you can mitigate the high CPU. 
-    Note: Before applying any mitigation steps, consider taking a profiler and or memory dump of the problematic  instance before applying mitigation.
-
-2. Check Application Insights for common errors if enabled and identity which instance we need to focus on. 
-      If all the instances are seeing high CPU, then go to the mitigation steps and try some of those steps to see if it helps.
-
-      Live Metrics can provide you with real time CPU utilization. This tells me the CPU utilization is likely caused by what ever application process is running on that container
-        ![alt text](./assets/image-8.png)
-
-    From there if you get really curios you can go to the kudu console of the application add https://<App Name Goes Here>.scm.azurewebsites.net/newui to the kudu URL, Switch instance -> select the different instances -> WebSSH 
-      ![alt text](./assets/image-10.png)
-
-    The ID 547eb31e1163 is the container id that we saw earlier in Live Streams showing signs of High CPU.
-      
-    You can then run the top command to further confirm the process causing the high CPU
-    ```
-    top
-    ```
-    ![alt text](./assets/image-9.png)
-
-    Here to correlate the ID , on the kudu console in the above screenshot -> Click on the menu Environment -> find COMPUTER_NAME variable and the value will be the instance profile. 
-
-3. Take a .Net profiler trace to identity any slow requests or endpoints. The platform can analyze ans present results for your review. You can correlate the instance by following any of the steps above. Note: You can profile all instances but its usually best to identity the instance causing the issue. Taking a profiler trace or memory dump may increase resource util by 1%-5%
+2. Check if the application have multiple Apps in same ASP.
+    * App service plan density check
+      * Verify if there are any warnings indicating too many apps in the same ASP. 
+    * Check if there is resource crunch[high CPU/memory/TCP /SNAT]. Visit the Diagnose and solve problems blade -> search for CPU/Memory/TCP/SNAT for detectors to help confirm what we see can explain the slowness. Don't forget to check the Web App Slow detector
+    * Any Instance movements -Platform upgrades/Platform maintenance/Scaling
+      * Check to if there are any resource health events on the App Service blade.
+        ![alt text](./assets/image-67.png)
+      * Service Health is also a good place to check for planned maintenance
+    * Application Restarts
+      * Applications can be restarted due to high CPU, high memory, and slowness. This is usually the platforms way to [proactively auto heal](https://azure.github.io/AppService/2017/08/17/Introducing-Proactive-Auto-Heal.html) the application under resource crunch
+  
+    Is the slowness noticed with multiple applications?
+    * Check timeframe 
+    * Expected Vs observed response time
+    * Does the apps have common dependent services
+    * Always check if issue is continuous or intermittent
+  
+    * Slow performance – Metrics
+          * Request time metric is showing a big spike:
+            ![alt text](./assets/image-80.png)
+            This will be a great time frame to check if there were slowness 
+          * Let’s check the CPU time (Aggregation max), there are few spikes, but it is not consistent:
+            ![alt text](./assets/image-90.png)
+          * Next step, let’s view the Memory working set, yes there is an increase that correlates with the requests increase, but it’s not an unusual spike:
+            ![alt text](./assets/image-100.png)
+          * In this case the next steps will be to confirm if the issue is happening and find out which URLs are showing signs of slowness
+          ![alt text](./assets/image-600.png)
+           In this case the issue happens when load testing with 200 virtual users for 20 mins while running 2 B2 instances. You can see that we clearly have an increase in response time across most endpoints comparing to previous test with 100 virtual users using one B2 instance.
+           ![alt text](./assets/image-700.png)
+          * In this case the issue can be mitigated by scaling up to premium instance and also enabling Automatic Scale or Rule-based scaling. 
+          * If after scaling the issue persist, it will be a good idea to take a trace and fine tune the application.
+          
+  
+3. Take a .NET profiler trace to identity any slow requests or endpoints if scaling. The platform can analyze ans present results for your review. You can correlate the instance by following any of the steps above. Note: You can profile all instances but its usually best to identity the instance causing the issue. Taking a profiler trace or memory dump may increase resource util by 1%-5%.
    ![alt text](./assets/image-66.png)
 
-   The tool is able to identity the root cause of the high CPU in most cases
-   ![alt text](./assets/image-111.png)
 
+If you need steps to identity which instance is causing high CPU or High Memory check out the HighCPU-repro branch.
   
 ## Mitigation
 1. Restart
