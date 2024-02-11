@@ -74,7 +74,7 @@ namespace ContosoUniversity.API.Controllers
                 .Include(s => s.StudentCourse)
                 .ThenInclude(s => s.Course)
                 .AsNoTracking()
-                .Where(s => EF.Functions.Like(s.FirstName, name+"%") || EF.Functions.Like(s.LastName, name + "%"))
+                .Where(s => EF.Functions.Like(s.FirstName, $"%{name}%") || EF.Functions.Like(s.LastName, $"%{name}%"))
                 .ToListAsync();
             
             if (students == null)
