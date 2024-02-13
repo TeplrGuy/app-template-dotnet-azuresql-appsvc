@@ -16,8 +16,8 @@ module web '../core/host/appservice.bicep' = {
     applicationInsightsName: applicationInsightsName
     appServicePlanId: appServicePlanId
     appSettings: appSettings
-    runtimeName: 'dotnetcore'
-    runtimeVersion: '6.0'
+    runtimeName: ''
+    runtimeVersion: ''
     tags: union(tags, { 'azd-service-name': serviceName })
     scmDoBuildDuringDeployment: false
   }

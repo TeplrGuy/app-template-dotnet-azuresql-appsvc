@@ -4,7 +4,7 @@ param tags object = {}
 
 // Reference Properties
 param applicationInsightsName string = ''
-param appServicePlanId string
+param windowsAppServicePlanId string
 param keyVaultName string = ''
 param managedIdentity bool = !empty(keyVaultName)
 
@@ -17,7 +17,7 @@ param runtimeNameAndVersion string = '${runtimeName}|${runtimeVersion}'
 param runtimeVersion string
 
 // Microsoft.Web/sites Properties
-param kind string = 'app,linux'
+param kind string = 'app,windows'
 
 // Microsoft.Web/sites/config
 param allowedOrigins array = []
@@ -27,7 +27,7 @@ param appSettings object = {}
 param clientAffinityEnabled bool = false
 param enableOryxBuild bool = contains(kind, 'linux')
 param functionAppScaleLimit int = -1
-param linuxFxVersion string = runtimeNameAndVersion
+param windowsFxVersion string = runtimeNameAndVersion
 param minimumElasticInstanceCount int = -1
 param numberOfWorkers int = -1
 param scmDoBuildDuringDeployment bool = false
@@ -36,15 +36,15 @@ param ftpsState string = 'FtpsOnly'
 param healthCheckPath string = ''
 param allowAllOrigins bool = false
 
-resource appService 'Microsoft.Web/sites@2022-03-01' = {
+resource windowsAppService 'Microsoft.Web/sites@2022-03-01' = {
   name: name
   location: location
   tags: tags
   kind: kind
   properties: {
-    serverFarmId: appServicePlanId
+    serverFarmId: windowsAppServicePlanId
     siteConfig: {
-      linuxFxVersion:linuxFxVersion
+      windowsFxVersion: windowsFxVersion
       alwaysOn: alwaysOn
       ftpsState: ftpsState
       minTlsVersion: '1.2'
@@ -97,7 +97,7 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing
   name: applicationInsightsName
 }
 
-output identityPrincipalId string = managedIdentity ? appService.identity.principalId : ''
-output name string = appService.name
-output uri string = 'https://${appService.properties.defaultHostName}'
-output hostname string = appService.properties.defaultHostName
+output identityPrincipalId string = managedIdentity ? windowsAppService.identity.principalId : ''
+output name string = windowsAppService.name
+output uri string = 'https://${windowsAppService.properties.defaultHostName}'
+output hostname string = windowsAppService.properties.defaultHostName

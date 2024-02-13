@@ -211,6 +211,18 @@ Now, you had an hands on introduction to .NET web applications and deployment on
 2. [Azure App Service Landing Zone Accelerator](https://github.com/Azure/appservice-landing-zone-accelerator) has deployment architecture guidance for hardening and scaling Azure App Service deployments.
 
 
+## General App Configuration Issues
+In this repro, we focus mainly on how to go about resolving configuration issues that occur with App Service. Below are topics we will focus on in this module. The goal is to understand how to use the Diagnose and solve problems tools to help narrow down the issue to quickly get to a resolution and or know when to create a Microsoft support ticket so we can help. Below are topics we will be focusing on.
+
+1. SSL & Domains
+[Setting up SSL and Domains](https://learn.microsoft.com/en-us/azure/app-service/configure-ssl-bindings) 
+
+2. App Service Plans
+[App Service Plan overview](https://learn.microsoft.com/en-us/azure/app-service/overview-hosting-plans)
+
+3. Change Tracking
+[Changes in Azure Function and Web Apps (in-guest changes)](https://learn.microsoft.com/en-us/azure/azure-monitor/change/change-analysis#changes-in-azure-function-and-web-apps-in-guest-changes)
+
 
 
 ## Contributing
