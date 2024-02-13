@@ -228,15 +228,15 @@ The application in this branch will start with a 403 and its your job to use the
 ## Troubleshooting steps
 1. Check the frontend and backend services to understand the symptoms and open developer tools in thr browser to see if you can identity the issue
 2. Understand that there are other ways you can get a 403 on App Service
-  * Access Restrictions for inbound can cause 403. Check the detector or settings to find out if its on and if its causing the 403 errors
+    * Access Restrictions for inbound can cause 403. Check the detector or settings to find out if its on and if its causing the 403 errors
 3. At this point if thats not the cause of 403, you can move to check application logs 
-  * Log Steam and LogFiles FREB and Detailed Error logs (windows only) will have info about the application behavior.(Ensure App Service Logs is enabled)
-  * These logs will show you which module is returning th 403. If is says AspNetModule then it likely the issue is code related. Note: there are some settings required to set up in configuration for the app to run like application stack. Confirm its set to the right stack.
+    * Log Steam and LogFiles FREB and Detailed Error logs (windows only) will have info about the application behavior.(Ensure App Service Logs is enabled)
+    * These logs will show you which module is returning th 403. If is says AspNetModule then it likely the issue is code related. Note: there are some settings required to set up in configuration for the app to run like application stack. Confirm its set to the right stack.
 4. Check change analysis or navigator (tool) to understand if anyone may have changed something that can possibly cause the 403.
-  * Check for dependency changes like network config, configuration, stack configuration for the frontend app and backend app
+    * Check for dependency changes like network config, configuration, stack configuration for the frontend app and backend app
 5. Issue could be code related or platform. Try to isolate.
-  * Check configuration and environment variables to ensure they are correct and working.
-  * Go to kudu console and run nslookup/tcpping to try to see if the app can talk to Key Vault and SQL in this case.
+    * Check configuration and environment variables to ensure they are correct and working.
+    * Go to kudu console and run nslookup/tcpping to try to see if the app can talk to Key Vault and SQL in this case.
 6. Check the dependencies to see if you can spot anything that can contribute to the issue. If application is unable to connect to SQL or KV, it will throw an error since the code relies on these components.
 7. If none of the above helps you get closer to the cause, please reach out to Microsoft support.
 
