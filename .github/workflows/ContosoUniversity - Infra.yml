@@ -1,0 +1,44 @@
+name: ContosoUniversity-Infra
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/**'
+      
+  # We also want to be able to run this manually from Github
+  workflow_dispatch:
+  
+env:
+  AZ_ENVIRONMENT_NAME: ${{ secrets.AZURE_ENVIRONMENT_NAME }}
+  AZ_LOCATION: ${{ secrets.AZURE_LOCATION }}
+  AZ_APP_NAME: ${{ secrets.AZURE_ENVIRONMENT_NAME }}-app
+  AZ_API_NAME: ${{ secrets.AZURE_ENVIRONMENT_NAME }}-api
+  AZ_SQL_SERVER_PASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+  AZ_APP_PASSWORD: ${{secrets.AZURE_APP_PASSWORD}}
+
+jobs:
+  infra:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Azure Login
+      uses: Azure/login@v1.4.4
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Deploy Template
+      uses: Azure/arm-deploy@v1.0.8
+      with:
+        scope: subscription
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        region: ${{ env.AZ_LOCATION }}
+        template: infra/main.bicep
+        deploymentMode: Incremental
+        deploymentName: 'gh-actions'
+        parameters: environmentName=${{ env.AZ_ENVIRONMENT_NAME }} location=${{ env.AZ_LOCATION }} apiServiceName=${{ env.AZ_API_NAME }} webServiceName=${{ env.AZ_APP_NAME }} sqlAdminPassword=${{ env.AZ_SQL_SERVER_PASSWORD }} appUserPassword=${{ env.AZ_APP_PASSWORD }}
+        failOnStdErr: false
