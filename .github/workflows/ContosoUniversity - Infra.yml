@@ -3,7 +3,7 @@ name: ContosoUniversity-Infra
 on:
   push:
     branches:
-      - main
+      - SlowRequests-repro
     paths:
       - 'infra/**'
       
