@@ -3,7 +3,7 @@ name: ContosoUniversity-Infra
 on:
   push:
     branches:
-      - main
+      - SSLDomainsSKUsPerfromanceChangeTracking-repro
     paths:
       - 'infra/**'
       
