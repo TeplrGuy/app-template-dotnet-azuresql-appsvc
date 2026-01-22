@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,10 @@ else
 }
 
 builder.Services.AddRazorPages();
+
+// Add health checks
+builder.Services.AddHealthChecks();
+
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] != null)
 {
     builder.Services.AddApplicationInsightsTelemetry(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]);
@@ -50,6 +55,9 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthorization();
+
+// Map health check endpoint
+app.MapHealthChecks("/health");
 
 app.UseEndpoints(endpoints =>
 {
