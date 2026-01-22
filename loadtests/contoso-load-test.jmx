@@ -10,7 +10,7 @@
         <collectionProp name="Arguments.arguments">
           <elementProp name="BASE_URL" elementType="Argument">
             <stringProp name="Argument.name">BASE_URL</stringProp>
-            <stringProp name="Argument.value">${__groovy(def url = props.get("webapp_url") ?: "localhost"; url.replaceAll("https?://", "").replaceAll("/.*", ""),)}</stringProp>
+            <stringProp name="Argument.value">${__P(webapp_url,localhost)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="CONCURRENT_USERS" elementType="Argument">

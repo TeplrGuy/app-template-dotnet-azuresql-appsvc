@@ -219,6 +219,15 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: � Extract hostname from URL
+        id: extract-host
+        run: |
+          FULL_URL="${{ needs.deploy-qa.outputs.webapp-url }}"
+          # Remove protocol and trailing path
+          HOSTNAME=$(echo "$FULL_URL" | sed -E 's|https?://||' | sed 's|/.*||')
+          echo "hostname=$HOSTNAME" >> $GITHUB_OUTPUT
+          echo "📍 Target hostname: $HOSTNAME"
+
       - name: 📊 Run Quick Load Test
         uses: azure/load-testing@v1
         with:
@@ -227,7 +236,7 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           env: |
             [
-              { "name": "webapp_url", "value": "${{ needs.deploy-qa.outputs.webapp-url }}" },
+              { "name": "webapp_url", "value": "${{ steps.extract-host.outputs.hostname }}" },
               { "name": "concurrent_users", "value": "10" },
               { "name": "duration_seconds", "value": "60" },
               { "name": "ramp_up_seconds", "value": "10" }
@@ -325,6 +334,15 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: � Extract hostname from URL
+        id: extract-host
+        run: |
+          FULL_URL="${{ needs.deploy-staging.outputs.webapp-url }}"
+          # Remove protocol and trailing path
+          HOSTNAME=$(echo "$FULL_URL" | sed -E 's|https?://||' | sed 's|/.*||')
+          echo "hostname=$HOSTNAME" >> $GITHUB_OUTPUT
+          echo "📍 Target hostname: $HOSTNAME"
+
       - name: 📊 Run Production-Like Load Test
         id: loadtest
         uses: azure/load-testing@v1
@@ -334,7 +352,7 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           env: |
             [
-              { "name": "webapp_url", "value": "${{ needs.deploy-staging.outputs.webapp-url }}" },
+              { "name": "webapp_url", "value": "${{ steps.extract-host.outputs.hostname }}" },
               { "name": "concurrent_users", "value": "50" },
               { "name": "duration_seconds", "value": "300" },
               { "name": "ramp_up_seconds", "value": "60" }
