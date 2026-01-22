@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj": {}
+    "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj": {}
   },
   "projects": {
-    "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj": {
+    "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj",
+        "projectUniqueName": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj",
         "projectName": "ContosoUniversity.WebApplication",
-        "projectPath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj",
+        "projectPath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj",
         "packagesPath": "C:\\Users\\gappiah\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.WebApplication\\obj\\",
+        "outputPath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.WebApplication\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -39,7 +39,13 @@
           "warnAsError": [
             "NU1605"
           ]
-        }
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net6.0": {
@@ -81,6 +87,24 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[6.0.36, 6.0.36]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x64",
+              "version": "[6.0.36, 6.0.36]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[6.0.36, 6.0.36]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[6.0.36, 6.0.36]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.AspNetCore.App": {
               "privateAssets": "none"
@@ -89,7 +113,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.101\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.100\\RuntimeIdentifierGraph.json"
         }
       }
     }

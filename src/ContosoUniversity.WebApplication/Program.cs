@@ -32,7 +32,8 @@ builder.Services.AddHealthChecks();
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] != null)
 {
     builder.Services.AddApplicationInsightsTelemetry(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]);
-} else
+}
+else
 {
     builder.Services.AddApplicationInsightsTelemetry();
 }

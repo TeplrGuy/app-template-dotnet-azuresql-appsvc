@@ -22,18 +22,14 @@ engineInstances: 1
 # - Staging: 50 users, 300s duration (production-like)
 # =============================================================================
 env:
-  - name: webapp_host
-    value: ${WEBAPP_HOST}
-  - name: webapp_port
-    value: "443"
-  - name: webapp_protocol
-    value: "https"
-  - name: threads
-    value: ${THREADS:-50}
-  - name: duration
-    value: ${DURATION:-300}
-  - name: ramp_time
-    value: ${RAMP_TIME:-60}
+  - name: webapp_url
+    value: ${WEBAPP_URL:-localhost}
+  - name: concurrent_users
+    value: ${CONCURRENT_USERS:-50}
+  - name: duration_seconds
+    value: ${DURATION_SECONDS:-300}
+  - name: ramp_up_seconds
+    value: ${RAMP_UP_SECONDS:-60}
 
 # =============================================================================
 # Failure Criteria (Deployment Gates)

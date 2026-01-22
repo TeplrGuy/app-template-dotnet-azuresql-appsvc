@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "D4F9FrgScEFLt/mfeFSZfOD1LbsgHo2B2lWe6l9IvOQPw0jZ9pKf6oWSIQJ5F8j7wxiKeazXfkW8osYui+O53A==",
+  "dgSpecHash": "58i25MqWpYA=",
   "success": true,
-  "projectFilePath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj",
+  "projectFilePath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.WebApplication\\ContosoUniversity.WebApplication.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\gappiah\\.nuget\\packages\\humanizer.core\\2.2.0\\humanizer.core.2.2.0.nupkg.sha512",
     "C:\\Users\\gappiah\\.nuget\\packages\\messagepack\\2.1.152\\messagepack.2.1.152.nupkg.sha512",
@@ -188,7 +188,11 @@
     "C:\\Users\\gappiah\\.nuget\\packages\\system.threading.timer\\4.3.0\\system.threading.timer.4.3.0.nupkg.sha512",
     "C:\\Users\\gappiah\\.nuget\\packages\\system.windows.extensions\\4.7.0\\system.windows.extensions.4.7.0.nupkg.sha512",
     "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.readerwriter\\4.3.0\\system.xml.readerwriter.4.3.0.nupkg.sha512",
-    "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.xdocument\\4.3.0\\system.xml.xdocument.4.3.0.nupkg.sha512"
+    "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.xdocument\\4.3.0\\system.xml.xdocument.4.3.0.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.netcore.app.ref\\6.0.36\\microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\6.0.36\\microsoft.windowsdesktop.app.ref.6.0.36.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\6.0.36\\microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\6.0.36\\microsoft.netcore.app.host.win-x64.6.0.36.nupkg.sha512"
   ],
   "logs": []
 }

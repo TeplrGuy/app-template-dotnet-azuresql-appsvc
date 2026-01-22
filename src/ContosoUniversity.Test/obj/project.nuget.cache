@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "4qgJU+8u25XUaCxrtUEtZWIpztemJyiKOp8zTo24groypDWCd3RZhOklE8gIc8xWLk/IvZW0SlnjhXiFCr8fsQ==",
+  "dgSpecHash": "L97glf3rAHQ=",
   "success": true,
-  "projectFilePath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Desktop\\Deliotte\\app-template-dotnet-azuresql-appsvc\\src\\ContosoUniversity.Test\\ContosoUniversity.Test.csproj",
+  "projectFilePath": "C:\\Users\\gappiah\\OneDrive - Microsoft\\Documents\\Solution Engineer\\Developer-Sessions\\ALT-CICD\\contoso-resilience-demo\\src\\ContosoUniversity.Test\\ContosoUniversity.Test.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\gappiah\\.nuget\\packages\\coverlet.collector\\3.1.2\\coverlet.collector.3.1.2.nupkg.sha512",
     "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.codecoverage\\17.2.0\\microsoft.codecoverage.17.2.0.nupkg.sha512",
@@ -98,7 +98,10 @@
     "C:\\Users\\gappiah\\.nuget\\packages\\system.threading.timer\\4.3.0\\system.threading.timer.4.3.0.nupkg.sha512",
     "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.readerwriter\\4.3.0\\system.xml.readerwriter.4.3.0.nupkg.sha512",
     "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.xdocument\\4.3.0\\system.xml.xdocument.4.3.0.nupkg.sha512",
-    "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.xmldocument\\4.3.0\\system.xml.xmldocument.4.3.0.nupkg.sha512"
+    "C:\\Users\\gappiah\\.nuget\\packages\\system.xml.xmldocument\\4.3.0\\system.xml.xmldocument.4.3.0.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.netcore.app.ref\\6.0.36\\microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\6.0.36\\microsoft.windowsdesktop.app.ref.6.0.36.nupkg.sha512",
+    "C:\\Users\\gappiah\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\6.0.36\\microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512"
   ],
   "logs": []
 }

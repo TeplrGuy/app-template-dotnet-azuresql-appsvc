@@ -227,10 +227,10 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           env: |
             [
-              { "name": "webapp_host", "value": "${{ needs.deploy-qa.outputs.webapp-url }}" },
-              { "name": "threads", "value": "10" },
-              { "name": "duration", "value": "60" },
-              { "name": "ramp_time", "value": "10" }
+              { "name": "webapp_url", "value": "${{ needs.deploy-qa.outputs.webapp-url }}" },
+              { "name": "concurrent_users", "value": "10" },
+              { "name": "duration_seconds", "value": "60" },
+              { "name": "ramp_up_seconds", "value": "10" }
             ]
         continue-on-error: true  # Don't block QA on load test failures
 
@@ -334,10 +334,10 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           env: |
             [
-              { "name": "webapp_host", "value": "${{ needs.deploy-staging.outputs.webapp-url }}" },
-              { "name": "threads", "value": "50" },
-              { "name": "duration", "value": "300" },
-              { "name": "ramp_time", "value": "60" }
+              { "name": "webapp_url", "value": "${{ needs.deploy-staging.outputs.webapp-url }}" },
+              { "name": "concurrent_users", "value": "50" },
+              { "name": "duration_seconds", "value": "300" },
+              { "name": "ramp_up_seconds", "value": "60" }
             ]
 
       - name: ✅ Validate Results
