@@ -67,6 +67,11 @@ env:
   DOTNET_VERSION: '6.0.x'
   AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
 
+# Required for OIDC federated authentication with Azure
+permissions:
+  id-token: write
+  contents: read
+
 # =============================================================================
 # JOB: BUILD & UNIT TEST
 # =============================================================================
@@ -161,7 +166,9 @@ jobs:
       - name: 🔐 Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 🚀 Deploy to QA slot
         id: deploy
@@ -205,13 +212,15 @@ jobs:
       - name: 🔐 Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 📊 Run Quick Load Test
         uses: azure/load-testing@v1
         with:
-          loadTestConfigFile: 'loadtests/config.yaml'
-          loadTestResource: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
+          loadtestConfigFile: 'loadtests/config.yaml'
+          loadtestResource: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           env: |
             [
@@ -258,7 +267,9 @@ jobs:
       - name: 🔐 Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 🚀 Deploy to Staging
         id: deploy
@@ -304,14 +315,16 @@ jobs:
       - name: 🔐 Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 📊 Run Production-Like Load Test
         id: loadtest
         uses: azure/load-testing@v1
         with:
-          loadTestConfigFile: 'loadtests/config.yaml'
-          loadTestResource: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
+          loadtestConfigFile: 'loadtests/config.yaml'
+          loadtestResource: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           env: |
             [
@@ -348,7 +361,7 @@ jobs:
     if: github.event.inputs.run_chaos_test == 'true'
     runs-on: ubuntu-latest
     environment:
-      name: chaos-staging
+      name: staging
     
     steps:
       - name: 📥 Checkout code
@@ -357,7 +370,9 @@ jobs:
       - name: 🔐 Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 📊 Record Baseline Metrics
         id: baseline
@@ -459,7 +474,7 @@ jobs:
 # =============================================================================
   deploy-production:
     name: 🚀 Deploy to Production
-    needs: [load-test-staging]
+    needs: [deploy-staging, load-test-staging]
     if: |
       github.ref == 'refs/heads/main' && 
       (github.event_name == 'push' || github.event.inputs.environment == 'production')
@@ -472,7 +487,9 @@ jobs:
       - name: 🔐 Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 📊 Pre-Swap Health Check
         run: |
