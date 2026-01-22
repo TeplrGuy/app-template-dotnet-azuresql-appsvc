@@ -10,10 +10,7 @@
 version: v0.1
 testId: contoso-university-load-test
 displayName: Contoso University Load Test
-description: |
-  Load test for Contoso University .NET MVC application.
-  Tests key endpoints: Home, Students, Courses, Instructors.
-  Used as a deployment gate before production releases.
+description: Load test for Contoso University - Tests key endpoints as deployment gate
 
 testPlan: contoso-load-test.jmx
 engineInstances: 1
