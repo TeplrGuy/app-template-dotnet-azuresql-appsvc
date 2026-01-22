@@ -32,8 +32,8 @@ permissions:
   contents: read
 
 env:
-  LOAD_TEST_RESOURCE: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
-  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  LOAD_TEST_RESOURCE: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
+  RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
 
 jobs:
   # ============================================
@@ -59,8 +59,8 @@ jobs:
       - name: Run Smoke Load Test
         uses: azure/load-testing@v1
         with:
-          loadTestConfigFile: 'loadtests/config.yaml'
-          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          loadtestConfigFile: 'loadtests/config.yaml'
+          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           env: |
             [
@@ -100,8 +100,8 @@ jobs:
       - name: Run Load Test
         uses: azure/load-testing@v1
         with:
-          loadTestConfigFile: 'loadtests/config.yaml'
-          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          loadtestConfigFile: 'loadtests/config.yaml'
+          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           env: |
             [
@@ -141,8 +141,8 @@ jobs:
       - name: Run Stress Test
         uses: azure/load-testing@v1
         with:
-          loadTestConfigFile: 'loadtests/config.yaml'
-          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          loadtestConfigFile: 'loadtests/config.yaml'
+          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           env: |
             [
