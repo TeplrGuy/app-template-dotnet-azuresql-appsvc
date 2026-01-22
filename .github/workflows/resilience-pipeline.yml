@@ -183,8 +183,11 @@ jobs:
           echo "⏳ Waiting for app to warm up..."
           sleep 30
           
+          # Use HTTPS and follow redirects
+          HEALTH_URL=$(echo "${{ steps.deploy.outputs.webapp-url }}" | sed 's/http:/https:/')
+          
           for i in {1..3}; do
-            response=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deploy.outputs.webapp-url }}/health" 2>/dev/null || echo "000")
+            response=$(curl -sL -o /dev/null -w "%{http_code}" "${HEALTH_URL}/health" 2>/dev/null || echo "000")
             if [ "$response" = "200" ]; then
               echo "✅ Smoke test passed!"
               exit 0
@@ -284,8 +287,11 @@ jobs:
           echo "⏳ Waiting for app to warm up..."
           sleep 30
           
+          # Use HTTPS and follow redirects
+          HEALTH_URL=$(echo "${{ steps.deploy.outputs.webapp-url }}" | sed 's/http:/https:/')
+          
           for i in {1..5}; do
-            response=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deploy.outputs.webapp-url }}/health" 2>/dev/null || echo "000")
+            response=$(curl -sL -o /dev/null -w "%{http_code}" "${HEALTH_URL}/health" 2>/dev/null || echo "000")
             if [ "$response" = "200" ]; then
               echo "✅ Health check passed!"
               exit 0
@@ -456,8 +462,11 @@ jobs:
           echo "🔍 Validating system recovery..."
           sleep 30  # Allow system to recover
           
+          # Use HTTPS and follow redirects
+          HEALTH_URL=$(echo "${{ needs.deploy-staging.outputs.webapp-url }}" | sed 's/http:/https:/')
+          
           for i in {1..5}; do
-            response=$(curl -s -o /dev/null -w "%{http_code}" "${{ needs.deploy-staging.outputs.webapp-url }}" 2>/dev/null || echo "000")
+            response=$(curl -sL -o /dev/null -w "%{http_code}" "${HEALTH_URL}" 2>/dev/null || echo "000")
             if [ "$response" = "200" ]; then
               echo "✅ System recovered successfully!"
               exit 0
@@ -494,10 +503,12 @@ jobs:
       - name: 📊 Pre-Swap Health Check
         run: |
           echo "🔍 Verifying staging is healthy before swap..."
-          response=$(curl -s -o /dev/null -w "%{http_code}" "${{ needs.deploy-staging.outputs.webapp-url }}/health" 2>/dev/null || echo "000")
+          # Use HTTPS and follow redirects
+          HEALTH_URL=$(echo "${{ needs.deploy-staging.outputs.webapp-url }}" | sed 's/http:/https:/')
+          response=$(curl -sL -o /dev/null -w "%{http_code}" "${HEALTH_URL}/health" 2>/dev/null || echo "000")
           
           if [ "$response" != "200" ]; then
-            echo "❌ Staging health check failed. Aborting production deployment."
+            echo "❌ Staging health check failed (HTTP $response). Aborting production deployment."
             exit 1
           fi
           echo "✅ Staging is healthy. Proceeding with swap."
