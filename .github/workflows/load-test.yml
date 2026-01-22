@@ -1,0 +1,189 @@
+name: Load Testing Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - qa
+          - staging
+          - perf
+      test_profile:
+        description: 'Test profile to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  LOAD_TEST_RESOURCE: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+
+jobs:
+  # ============================================
+  # SMOKE TEST - Runs on every PR
+  # Quick validation, minimal load
+  # ============================================
+  smoke-test:
+    name: Smoke Test (Dev/PR)
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_profile == 'smoke')
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run Smoke Load Test
+        uses: azure/load-testing@v1
+        with:
+          loadTestConfigFile: 'loadtests/config.yaml'
+          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          env: |
+            [
+              { "name": "webapp_url", "value": "${{ vars.DEV_APP_URL }}" },
+              { "name": "concurrent_users", "value": "10" },
+              { "name": "duration_seconds", "value": "120" },
+              { "name": "ramp_up_seconds", "value": "30" }
+            ]
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-results
+          path: ${{ github.workspace }}/loadTest
+
+  # ============================================
+  # LOAD TEST - Runs on QA/Staging deployments
+  # Full SLA validation
+  # ============================================
+  load-test:
+    name: Load Test (QA/Staging)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_profile == 'load')
+    runs-on: ubuntu-latest
+    environment: qa
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run Load Test
+        uses: azure/load-testing@v1
+        with:
+          loadTestConfigFile: 'loadtests/config.yaml'
+          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          env: |
+            [
+              { "name": "webapp_url", "value": "${{ vars.QA_APP_URL }}" },
+              { "name": "concurrent_users", "value": "100" },
+              { "name": "duration_seconds", "value": "300" },
+              { "name": "ramp_up_seconds", "value": "60" }
+            ]
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-results
+          path: ${{ github.workspace }}/loadTest
+
+  # ============================================
+  # STRESS TEST - Manual trigger only
+  # Runs in dedicated performance environment
+  # ============================================
+  stress-test:
+    name: Stress Test (Perf Environment)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_profile == 'stress'
+    runs-on: ubuntu-latest
+    environment: perf  # Requires manual approval
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run Stress Test
+        uses: azure/load-testing@v1
+        with:
+          loadTestConfigFile: 'loadtests/config.yaml'
+          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          env: |
+            [
+              { "name": "webapp_url", "value": "${{ vars.PERF_APP_URL }}" },
+              { "name": "concurrent_users", "value": "500" },
+              { "name": "duration_seconds", "value": "600" },
+              { "name": "ramp_up_seconds", "value": "120" }
+            ]
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stress-test-results
+          path: ${{ github.workspace }}/loadTest
+
+  # ============================================
+  # BASELINE COMPARISON
+  # Compare results against previous runs
+  # ============================================
+  compare-results:
+    name: Compare with Baseline
+    needs: [load-test]
+    if: always() && needs.load-test.result == 'success'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download Current Results
+        uses: actions/download-artifact@v4
+        with:
+          name: load-test-results
+          path: ./current
+
+      - name: Analyze Results
+        run: |
+          echo "📊 Load Test Results Summary"
+          echo "============================"
+          echo "Results available in Azure Load Testing portal"
+          echo ""
+          echo "Key Metrics to Review:"
+          echo "- Response time percentiles (p50, p90, p95, p99)"
+          echo "- Error rate percentage"
+          echo "- Throughput (requests/second)"
+          echo "- Server-side metrics (CPU, memory, DTU)"

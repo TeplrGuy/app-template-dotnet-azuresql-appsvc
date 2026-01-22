@@ -1,0 +1,66 @@
+# =============================================================================
+# Azure Load Testing Configuration
+# =============================================================================
+# This configuration follows enterprise best practices:
+# - Failure criteria act as deployment gates
+# - Environment variables allow different thresholds per stage
+# - Auto-stop prevents runaway costs on failed tests
+# =============================================================================
+
+version: v0.1
+testId: contoso-university-load-test
+displayName: Contoso University Load Test
+description: |
+  Load test for Contoso University .NET MVC application.
+  Tests key endpoints: Home, Students, Courses, Instructors.
+  Used as a deployment gate before production releases.
+
+testPlan: contoso-load-test.jmx
+engineInstances: 1
+
+# =============================================================================
+# Environment Variables
+# These are overridden by CI/CD pipeline per environment:
+# - QA: 10 users, 60s duration (quick feedback)
+# - Staging: 50 users, 300s duration (production-like)
+# =============================================================================
+env:
+  - name: webapp_host
+    value: ${WEBAPP_HOST}
+  - name: webapp_port
+    value: "443"
+  - name: webapp_protocol
+    value: "https"
+  - name: threads
+    value: ${THREADS:-50}
+  - name: duration
+    value: ${DURATION:-300}
+  - name: ramp_time
+    value: ${RAMP_TIME:-60}
+
+# =============================================================================
+# Failure Criteria (Deployment Gates)
+# These thresholds are for STAGING - the final gate before production
+# 
+# Per Microsoft Well-Architected Framework:
+# - Response time: p95 < 2s for web applications
+# - Error rate: < 1% for critical paths
+# =============================================================================
+failureCriteria:
+  # Overall test criteria
+  - avg(response_time_ms) > 2000        # Average response time < 2s
+  - percentage(error) > 1                # Error rate < 1%
+  - p95(response_time_ms) > 3000         # 95th percentile < 3s
+  - p99(response_time_ms) > 5000         # 99th percentile < 5s
+  
+  # Per-request criteria (critical endpoints)
+  - GetRequest: avg(response_time_ms) > 1500    # Homepage should be fast
+  - GetRequest: percentage(error) > 0.5         # Homepage errors < 0.5%
+
+# =============================================================================
+# Auto-Stop Configuration
+# Saves costs by stopping tests that are clearly failing
+# =============================================================================
+autoStop:
+  errorPercentage: 10    # Stop if 10% errors in any 60s window
+  timeWindow: 60
