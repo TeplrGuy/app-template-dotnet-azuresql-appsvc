@@ -202,8 +202,9 @@ resource loadTesting 'Microsoft.LoadTestService/loadTests@2022-12-01' = {
 // =============================================================================
 // Connection String Configuration
 // =============================================================================
-// Build connection string for apps
-var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=sqladmin;Password=${sqlAdminPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+// Build connection string for apps (using appUserPassword for app connections)
+// Note: In production, you would create a separate SQL user with limited permissions
+var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=sqladmin;Password=${appUserPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
 // Configure Web App connection string
 resource webAppConnectionStrings 'Microsoft.Web/sites/config@2022-09-01' = {
