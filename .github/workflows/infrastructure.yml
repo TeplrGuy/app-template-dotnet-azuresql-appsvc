@@ -654,6 +654,8 @@ jobs:
 
       - name: 🔑 Grant Key Vault Access to ALL Apps (Main + Slots)
         run: |
+          set -e  # Exit on error
+          
           RG="${{ env.RESOURCE_GROUP }}"
           KV_NAME="kv-${{ env.ENVIRONMENT_NAME }}"
           API="${{ env.API_NAME }}"
@@ -671,62 +673,90 @@ jobs:
           echo "🔐 Granting Key Vault Access to ALL Apps"
           echo "========================================="
           
-          # Function to grant access
-          grant_kv_access() {
-            local APP_NAME=$1
-            local SLOT_NAME=$2
-            local PRINCIPAL_ID
-            
-            if [ -z "$SLOT_NAME" ]; then
-              echo "📝 Processing main app: $APP_NAME"
-              PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$APP_NAME" --query principalId -o tsv 2>&1)
-            else
-              echo "📝 Processing slot: $APP_NAME/$SLOT_NAME"
-              PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$APP_NAME" -s "$SLOT_NAME" --query principalId -o tsv 2>&1)
-            fi
-            
-            if [ -z "$PRINCIPAL_ID" ] || [[ "$PRINCIPAL_ID" == *"ERROR"* ]]; then
-              echo "  ⚠️ Could not get principal ID - skipping"
-              return
-            fi
-            
-            echo "  Principal ID: $PRINCIPAL_ID"
-            az role assignment create \
-              --assignee-object-id "$PRINCIPAL_ID" \
-              --assignee-principal-type ServicePrincipal \
-              --role "$ROLE_ID" \
-              --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role assignment returned non-zero (may already exist)"
-            echo "  ✅ Done"
-          }
-          
-          # Grant access to MAIN API App
+          # ---- MAIN API APP ----
           echo ""
-          echo "--- Main API App ---"
-          grant_kv_access "$API" ""
+          echo "📝 [1/6] Main API App: $API"
+          API_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$API" --query principalId -o tsv)
+          echo "   Principal ID: $API_PRINCIPAL"
+          az role assignment create \
+            --assignee-object-id "$API_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" || echo "   ℹ️ Role may already exist"
+          echo "   ✅ Done"
           
-          # Grant access to MAIN Web App
+          # ---- MAIN WEB APP ----
           echo ""
-          echo "--- Main Web App ---"
-          grant_kv_access "$WEB" ""
+          echo "📝 [2/6] Main Web App: $WEB"
+          WEB_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$WEB" --query principalId -o tsv)
+          echo "   Principal ID: $WEB_PRINCIPAL"
+          az role assignment create \
+            --assignee-object-id "$WEB_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" || echo "   ℹ️ Role may already exist"
+          echo "   ✅ Done"
           
-          # Grant access to API Slots
+          # ---- API STAGING SLOT ----
           echo ""
-          echo "--- API Slots ---"
-          for SLOT in staging qa; do
-            grant_kv_access "$API" "$SLOT"
-          done
+          echo "📝 [3/6] API Staging Slot: $API/staging"
+          API_STAGING_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$API" -s staging --query principalId -o tsv)
+          echo "   Principal ID: $API_STAGING_PRINCIPAL"
+          az role assignment create \
+            --assignee-object-id "$API_STAGING_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" || echo "   ℹ️ Role may already exist"
+          echo "   ✅ Done"
           
-          # Grant access to Web App Slots
+          # ---- API QA SLOT ----
           echo ""
-          echo "--- Web App Slots ---"
-          for SLOT in staging qa; do
-            grant_kv_access "$WEB" "$SLOT"
-          done
+          echo "📝 [4/6] API QA Slot: $API/qa"
+          API_QA_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$API" -s qa --query principalId -o tsv)
+          echo "   Principal ID: $API_QA_PRINCIPAL"
+          az role assignment create \
+            --assignee-object-id "$API_QA_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" || echo "   ℹ️ Role may already exist"
+          echo "   ✅ Done"
+          
+          # ---- WEB STAGING SLOT ----
+          echo ""
+          echo "📝 [5/6] Web Staging Slot: $WEB/staging"
+          WEB_STAGING_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$WEB" -s staging --query principalId -o tsv)
+          echo "   Principal ID: $WEB_STAGING_PRINCIPAL"
+          az role assignment create \
+            --assignee-object-id "$WEB_STAGING_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" || echo "   ℹ️ Role may already exist"
+          echo "   ✅ Done"
+          
+          # ---- WEB QA SLOT ----
+          echo ""
+          echo "📝 [6/6] Web QA Slot: $WEB/qa"
+          WEB_QA_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$WEB" -s qa --query principalId -o tsv)
+          echo "   Principal ID: $WEB_QA_PRINCIPAL"
+          az role assignment create \
+            --assignee-object-id "$WEB_QA_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" || echo "   ℹ️ Role may already exist"
+          echo "   ✅ Done"
           
           echo ""
           echo "========================================="
-          echo "✅ Key Vault access granted to all apps"
+          echo "✅ Key Vault access granted to all 6 apps"
           echo "========================================="
+          echo ""
+          echo "Summary of Principal IDs:"
+          echo "  API Main:    $API_PRINCIPAL"
+          echo "  API Staging: $API_STAGING_PRINCIPAL"
+          echo "  API QA:      $API_QA_PRINCIPAL"
+          echo "  Web Main:    $WEB_PRINCIPAL"
+          echo "  Web Staging: $WEB_STAGING_PRINCIPAL"
+          echo "  Web QA:      $WEB_QA_PRINCIPAL"
 
       - name: ⚙️ Configure API Slot App Settings
         run: |
