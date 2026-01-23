@@ -441,6 +441,22 @@ jobs:
           echo "kv_name=kv-${{ env.ENVIRONMENT_NAME }}" >> $GITHUB_OUTPUT
           echo "kv_endpoint=https://kv-${{ env.ENVIRONMENT_NAME }}.vault.azure.net/" >> $GITHUB_OUTPUT
 
+      - name: 🎰 Create Web App Slots (staging, qa)
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          WEB="${{ env.WEBAPP_NAME }}"
+          
+          for SLOT in staging qa; do
+            echo "🔍 Checking if $SLOT slot exists for $WEB..."
+            if az webapp deployment slot list -g "$RG" -n "$WEB" --query "[?name=='$SLOT']" -o tsv | grep -q "$SLOT"; then
+              echo "✅ Slot $SLOT already exists for $WEB"
+            else
+              echo "📝 Creating $SLOT slot for $WEB..."
+              az webapp deployment slot create -g "$RG" -n "$WEB" -s "$SLOT" --configuration-source "$WEB"
+              echo "✅ Created $SLOT slot for $WEB"
+            fi
+          done
+
       - name: 🎰 Create API Slots (staging, qa)
         run: |
           RG="${{ env.RESOURCE_GROUP }}"
@@ -449,11 +465,11 @@ jobs:
           for SLOT in staging qa; do
             echo "🔍 Checking if $SLOT slot exists for $API..."
             if az webapp deployment slot list -g "$RG" -n "$API" --query "[?name=='$SLOT']" -o tsv | grep -q "$SLOT"; then
-              echo "✅ Slot $SLOT already exists"
+              echo "✅ Slot $SLOT already exists for $API"
             else
               echo "📝 Creating $SLOT slot for $API..."
               az webapp deployment slot create -g "$RG" -n "$API" -s "$SLOT" --configuration-source "$API"
-              echo "✅ Created $SLOT slot"
+              echo "✅ Created $SLOT slot for $API"
             fi
           done
 
@@ -461,20 +477,20 @@ jobs:
         run: |
           RG="${{ env.RESOURCE_GROUP }}"
           
-          # API Slots
-          API="${{ env.API_NAME }}"
-          for SLOT in staging qa; do
-            echo "🔐 Enabling managed identity for $API/$SLOT..."
-            az webapp identity assign -g "$RG" -n "$API" -s "$SLOT" --query principalId -o tsv
-            echo "✅ Managed identity enabled for $API/$SLOT"
-          done
-          
           # Web App Slots
           WEB="${{ env.WEBAPP_NAME }}"
           for SLOT in staging qa; do
             echo "🔐 Enabling managed identity for $WEB/$SLOT..."
             az webapp identity assign -g "$RG" -n "$WEB" -s "$SLOT" --query principalId -o tsv
             echo "✅ Managed identity enabled for $WEB/$SLOT"
+          done
+          
+          # API Slots
+          API="${{ env.API_NAME }}"
+          for SLOT in staging qa; do
+            echo "🔐 Enabling managed identity for $API/$SLOT..."
+            az webapp identity assign -g "$RG" -n "$API" -s "$SLOT" --query principalId -o tsv
+            echo "✅ Managed identity enabled for $API/$SLOT"
           done
 
       - name: 🔑 Grant Key Vault Access to Slots
