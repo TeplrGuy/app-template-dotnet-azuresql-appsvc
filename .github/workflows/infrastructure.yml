@@ -288,6 +288,32 @@ jobs:
             sqlAadAdminType=${{ env.SQL_AAD_ADMIN_TYPE }}
           failOnStdErr: false
 
+      - name: � Export Resource Names to GitHub Variables
+        if: steps.deploy.outcome == 'success' || steps.check-resources.outputs.needs_deploy != 'true'
+        env:
+          # Use GH_PAT if available (required for setting repo variables), fallback to GITHUB_TOKEN
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📤 Exporting resource names to GitHub Variables..."
+          echo ""
+          echo "ℹ️ Note: Setting GitHub Variables requires a Personal Access Token (PAT) with 'repo' scope."
+          echo "   Store it as a secret named 'GH_PAT'. Without it, variables won't be set automatically."
+          echo ""
+          gh variable set AZURE_RESOURCE_GROUP --body "${{ env.RESOURCE_GROUP }}" || echo "⚠️ Could not set AZURE_RESOURCE_GROUP"
+          gh variable set AZURE_WEBAPP_NAME --body "${{ env.WEBAPP_NAME }}" || echo "⚠️ Could not set AZURE_WEBAPP_NAME"  
+          gh variable set AZURE_API_NAME --body "${{ env.API_NAME }}" || echo "⚠️ Could not set AZURE_API_NAME"
+          gh variable set AZURE_SQL_SERVER --body "sql-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_SQL_SERVER"
+          gh variable set AZURE_SQL_DATABASE --body "sqldb-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_SQL_DATABASE"
+          gh variable set AZURE_APPINSIGHTS_NAME --body "appi-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_APPINSIGHTS_NAME"
+          gh variable set AZURE_LOAD_TEST_RESOURCE --body "lt-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_LOAD_TEST_RESOURCE"
+          gh variable set AZURE_APP_SERVICE_PLAN --body "plan-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_APP_SERVICE_PLAN"
+          
+          # Web App URL
+          gh variable set AZURE_WEBAPP_URL --body "https://${{ env.WEBAPP_NAME }}.azurewebsites.net" || echo "⚠️ Could not set AZURE_WEBAPP_URL"
+          gh variable set AZURE_API_URL --body "https://${{ env.API_NAME }}.azurewebsites.net" || echo "⚠️ Could not set AZURE_API_URL"
+          
+          echo "✅ Resource variables exported for other workflows"
+
       - name: 📋 Deployment Summary
         if: steps.deploy.outcome == 'success'
         run: |
@@ -303,6 +329,16 @@ jobs:
           echo "| SQL Database | sqldb-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Application Insights | appi-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Load Testing | lt-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 URLs:" >> $GITHUB_STEP_SUMMARY
+          echo "- Web App: https://${{ env.WEBAPP_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://${{ env.API_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📤 Exported Variables:" >> $GITHUB_STEP_SUMMARY
+          echo "The following GitHub Variables are now available for other workflows:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_RESOURCE_GROUP\`, \`AZURE_WEBAPP_NAME\`, \`AZURE_API_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_LOAD_TEST_RESOURCE\`, \`AZURE_APPINSIGHTS_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_WEBAPP_URL\`, \`AZURE_API_URL\`" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
   # CONFIGURE APP SETTINGS & CONNECTION STRINGS

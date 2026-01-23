@@ -65,7 +65,11 @@ on:
 
 env:
   DOTNET_VERSION: '6.0.x'
+  # Auto-discovered from infrastructure deployment (set by infrastructure.yml)
   AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  AZURE_LOAD_TEST_RESOURCE: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+  AZURE_WEBAPP_URL: ${{ vars.AZURE_WEBAPP_URL }}
 
 # Required for OIDC federated authentication with Azure
 permissions:
@@ -232,8 +236,8 @@ jobs:
         uses: azure/load-testing@v1
         with:
           loadtestConfigFile: 'loadtests/config.yaml'
-          loadtestResource: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
-          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          loadtestResource: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
           env: |
             [
               { "name": "webapp_url", "value": "${{ steps.extract-host.outputs.hostname }}" },
@@ -348,8 +352,8 @@ jobs:
         uses: azure/load-testing@v1
         with:
           loadtestConfigFile: 'loadtests/config.yaml'
-          loadtestResource: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
-          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          loadtestResource: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
           env: |
             [
               { "name": "webapp_url", "value": "${{ steps.extract-host.outputs.hostname }}" },
@@ -422,7 +426,7 @@ jobs:
           
           az chaos experiment start \
             --name "${EXPERIMENT}-experiment" \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }} || {
               echo "⚠️ Experiment not found or failed to start"
               echo "experiment_started=false" >> $GITHUB_OUTPUT

@@ -54,8 +54,11 @@ permissions:
   contents: read
 
 env:
-  LOAD_TEST_RESOURCE: ${{ secrets.AZURE_LOAD_TEST_RESOURCE }}
-  RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  # Auto-discovered from infrastructure deployment (set by infrastructure.yml)
+  LOAD_TEST_RESOURCE: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+  WEBAPP_URL: ${{ vars.AZURE_WEBAPP_URL }}
 
 jobs:
   # ===========================================================================
