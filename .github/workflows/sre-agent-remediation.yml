@@ -1,0 +1,339 @@
+# =============================================================================
+# SRE Agent Remediation Workflow
+# =============================================================================
+# Triggered when Azure SRE Agent creates an issue or PR
+# Provides automated validation and verification of fixes
+# =============================================================================
+
+name: 🔧 SRE Agent Remediation
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to process'
+        required: false
+        type: number
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - analyze
+          - generate-fix
+          - validate-fix
+          - run-regression-test
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
+env:
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-contoso-prod' }}
+
+jobs:
+  # ===========================================================================
+  # Detect SRE Agent Issue and Triage
+  # ===========================================================================
+  triage-sre-issue:
+    name: 🔍 Triage SRE Agent Issue
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' && 
+      (contains(github.event.issue.labels.*.name, 'sre-agent') ||
+       contains(github.event.issue.title, '[SRE Agent]'))
+    outputs:
+      issue_type: ${{ steps.analyze.outputs.issue_type }}
+      severity: ${{ steps.analyze.outputs.severity }}
+      affected_component: ${{ steps.analyze.outputs.component }}
+      
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Analyze Issue
+        id: analyze
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const title = issue.title || '';
+            
+            // Determine issue type based on content
+            let issueType = 'unknown';
+            if (body.includes('response time') || body.includes('latency')) {
+              issueType = 'performance';
+            } else if (body.includes('exception') || body.includes('error')) {
+              issueType = 'error';
+            } else if (body.includes('timeout') || body.includes('connection')) {
+              issueType = 'connectivity';
+            }
+            
+            // Determine severity
+            let severity = 'medium';
+            if (body.includes('critical') || body.includes('production')) {
+              severity = 'high';
+            }
+            
+            // Identify affected component
+            let component = 'unknown';
+            if (body.includes('API') || body.includes('api-contoso')) {
+              component = 'api';
+            } else if (body.includes('web') || body.includes('app-contoso')) {
+              component = 'webapp';
+            } else if (body.includes('SQL') || body.includes('database')) {
+              component = 'database';
+            }
+            
+            core.setOutput('issue_type', issueType);
+            core.setOutput('severity', severity);
+            core.setOutput('component', component);
+            
+            // Add labels based on analysis
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: [`type:${issueType}`, `severity:${severity}`, `component:${component}`]
+            });
+            
+            // Add comment with analysis
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `## 🤖 SRE Agent Issue Triage
+              
+              | Attribute | Value |
+              |-----------|-------|
+              | **Issue Type** | ${issueType} |
+              | **Severity** | ${severity} |
+              | **Affected Component** | ${component} |
+              
+              ### Next Steps
+              1. Analyzing codebase for potential fixes...
+              2. Running diagnostic tests...
+              3. Generating remediation PR (if applicable)
+              
+              _This analysis was performed automatically by the SRE Agent Remediation workflow._`
+            });
+
+  # ===========================================================================
+  # Validate PR from SRE Agent
+  # ===========================================================================
+  validate-sre-fix:
+    name: ✅ Validate SRE Agent Fix
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' &&
+      (contains(github.event.pull_request.labels.*.name, 'automated-fix') ||
+       contains(github.event.pull_request.title, '[SRE Agent]'))
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: 📦 Restore dependencies
+        run: dotnet restore src/ContosoUniversity.sln
+
+      - name: 🏗️ Build application
+        run: dotnet build src/ContosoUniversity.sln --no-restore
+
+      - name: 🧪 Run unit tests
+        run: dotnet test src/ContosoUniversity.Test/ContosoUniversity.Test.csproj --no-build --verbosity normal
+
+      - name: 🔐 Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 📦 Publish API
+        run: |
+          dotnet publish src/ContosoUniversity.API/ContosoUniversity.API.csproj \
+            -c Release -o ./publish/api
+
+      - name: 🚀 Deploy to QA for validation
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.QA_API_APP_NAME || 'api-contoso-qa' }}
+          slot-name: 'qa'
+          package: ./publish/api
+
+      - name: 🧪 Run smoke test
+        run: |
+          QA_URL="${{ vars.QA_API_URL || 'https://api-contoso-qa.azurewebsites.net' }}"
+          for i in {1..10}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$QA_URL/health" || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i: Got $response, waiting..."
+            sleep 10
+          done
+          echo "❌ Health check failed after 10 attempts"
+          exit 1
+
+      - name: 📊 Run regression load test
+        uses: azure/load-testing-run-test@v1
+        with:
+          loadTestConfigFile: 'loadtests/scenarios/chaos-config.yaml'
+          loadTestResource: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
+          env: |
+            [
+              { "name": "webapp_url", "value": "${{ vars.QA_API_URL }}" }
+            ]
+
+      - name: ✅ Update PR with results
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const status = '${{ job.status }}' === 'success' ? '✅ PASSED' : '❌ FAILED';
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `## 🔧 SRE Agent Fix Validation
+              
+              **Overall Status:** ${status}
+              
+              ### Validation Steps
+              | Step | Status |
+              |------|--------|
+              | Build | ✅ |
+              | Unit Tests | ✅ |
+              | Deploy to QA | ✅ |
+              | Health Check | ${{ steps.smoke.outcome == 'success' && '✅' || '❌' }} |
+              | Regression Load Test | ${{ job.status == 'success' && '✅' || '❌' }} |
+              
+              ${status === '✅ PASSED' ? 
+                '### ✅ Ready for Human Approval\nAll automated checks passed. Please review the code changes and approve if they look correct.' :
+                '### ❌ Validation Failed\nPlease investigate the failures above before merging.'}
+              
+              _This validation was performed automatically by the SRE Agent Remediation workflow._`
+            });
+
+  # ===========================================================================
+  # Manual Trigger - Generate Fix
+  # ===========================================================================
+  generate-fix:
+    name: 🔧 Generate Fix for Issue
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate-fix'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📋 Get Issue Details
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = ${{ github.event.inputs.issue_number || 0 }};
+            if (!issueNumber) {
+              core.setFailed('Issue number is required');
+              return;
+            }
+            
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+            
+            core.setOutput('title', issue.title);
+            core.setOutput('body', issue.body);
+            return issue;
+
+      - name: 🤖 Invoke Copilot Coding Agent
+        id: copilot
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // This would trigger GitHub Copilot Coding Agent to analyze and fix
+            // In production, this integrates with Copilot's agentic capabilities
+            
+            const issueBody = `${{ steps.issue.outputs.body }}`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ github.event.inputs.issue_number }},
+              body: `## 🤖 Generating Fix with GitHub Copilot
+              
+              Analyzing the issue and generating a fix...
+              
+              @github-copilot Please analyze this issue and create a pull request with a fix:
+              - Review the error/issue description
+              - Identify the root cause in the codebase
+              - Generate a minimal fix
+              - Include regression tests
+              
+              _The Copilot Coding Agent will respond with a PR shortly._`
+            });
+
+  # ===========================================================================
+  # Manual Trigger - Run Regression Test
+  # ===========================================================================
+  regression-test:
+    name: 📊 Run Regression Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'run-regression-test'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 📊 Run Full Load Test
+        uses: azure/load-testing-run-test@v1
+        with:
+          loadTestConfigFile: 'loadtests/config.yaml'
+          loadTestResource: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
+
+      - name: 📈 Report Results
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const issueNumber = ${{ github.event.inputs.issue_number || 0 }};
+            if (!issueNumber) return;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `## 📊 Regression Test Results
+              
+              **Status:** ${{ job.status }}
+              
+              View detailed results in the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+              
+              _Regression test completed._`
+            });

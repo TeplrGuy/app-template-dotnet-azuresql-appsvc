@@ -58,6 +58,7 @@ var appServicePlanName = 'plan-${environmentName}'
 var appInsightsName = 'appi-${environmentName}'
 var logAnalyticsName = 'log-${environmentName}'
 var loadTestingName = 'lt-${environmentName}'
+var sreAgentName = 'sre-${environmentName}'
 
 // =============================================================================
 // Log Analytics Workspace
@@ -492,6 +493,91 @@ resource loadTesting 'Microsoft.LoadTestService/loadTests@2022-12-01' = {
 }
 
 // =============================================================================
+// Azure SRE Agent (Preview)
+// =============================================================================
+// The SRE Agent provides AI-powered incident detection, root cause analysis,
+// and automated remediation suggestions integrated with GitHub.
+// =============================================================================
+
+@description('Enable Azure SRE Agent for automated incident response')
+param enableSreAgent bool = true
+
+@description('SRE Agent mode: Review = human approval required, Autonomous = auto-remediate, ReadOnly = observe only')
+@allowed(['Review', 'Autonomous', 'ReadOnly'])
+param sreAgentMode string = 'Review'
+
+@description('GitHub repository URL for SRE Agent code integration (e.g., https://github.com/owner/repo)')
+param githubRepoUrl string = ''
+
+resource sreAgent 'Microsoft.App/agents@2025-05-01-preview' = if (enableSreAgent) {
+  name: sreAgentName
+  location: location
+  tags: union(tags, { 'purpose': 'sre-automation' })
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    agentMode: sreAgentMode
+    accessLevel: 'High'
+  }
+}
+
+// SRE Agent - Application Insights Data Connector
+// Connects the agent to App Insights for telemetry analysis
+resource sreAgentAppInsightsConnector 'Microsoft.App/agents/dataConnectors@2025-05-01-preview' = if (enableSreAgent) {
+  parent: sreAgent
+  name: 'appinsights-connector'
+  properties: {
+    connectorType: 'ApplicationInsights'
+    targetResourceId: appInsights.id
+  }
+}
+
+// SRE Agent - Log Analytics Data Connector
+// Connects the agent to Log Analytics for log analysis
+resource sreAgentLogAnalyticsConnector 'Microsoft.App/agents/dataConnectors@2025-05-01-preview' = if (enableSreAgent) {
+  parent: sreAgent
+  name: 'loganalytics-connector'
+  properties: {
+    connectorType: 'LogAnalytics'
+    targetResourceId: logAnalytics.id
+  }
+}
+
+// SRE Agent needs Reader access to monitored resources
+var readerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
+
+resource sreAgentApiReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSreAgent) {
+  name: guid(apiApp.id, sreAgent.id, readerRoleId)
+  scope: apiApp
+  properties: {
+    principalId: sreAgent.identity.principalId
+    roleDefinitionId: readerRoleId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource sreAgentWebReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSreAgent) {
+  name: guid(webApp.id, sreAgent.id, readerRoleId)
+  scope: webApp
+  properties: {
+    principalId: sreAgent.identity.principalId
+    roleDefinitionId: readerRoleId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource sreAgentAppInsightsReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSreAgent) {
+  name: guid(appInsights.id, sreAgent.id, readerRoleId)
+  scope: appInsights
+  properties: {
+    principalId: sreAgent.identity.principalId
+    roleDefinitionId: readerRoleId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// =============================================================================
 // Outputs
 // =============================================================================
 output webAppName string = webApp.name
@@ -502,6 +588,8 @@ output keyVaultName string = keyVault.name
 output keyVaultEndpoint string = keyVault.properties.vaultUri
 output appInsightsName string = appInsights.name
 output loadTestingName string = loadTesting.name
+output sreAgentName string = enableSreAgent ? sreAgent.name : ''
+output sreAgentMode string = sreAgentMode
 output webUri string = 'https://${webApp.properties.defaultHostName}'
 output apiUri string = 'https://${apiApp.properties.defaultHostName}'
 output appInsightsConnectionString string = appInsights.properties.ConnectionString

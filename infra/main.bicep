@@ -61,6 +61,17 @@ param sqlAadAdminObjectId string = ''
 @description('Key name for SQL connection string in Key Vault')
 param sqlConnectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
+// Azure SRE Agent parameters
+@description('Enable Azure SRE Agent for automated incident response')
+param enableSreAgent bool = true
+
+@description('SRE Agent mode: Review = human approval required, Autonomous = auto-remediate, ReadOnly = observe only')
+@allowed(['Review', 'Autonomous', 'ReadOnly'])
+param sreAgentMode string = 'Review'
+
+@description('GitHub repository URL for SRE Agent code integration')
+param githubRepoUrl string = ''
+
 // Resource group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   name: 'rg-${environmentName}'
@@ -88,6 +99,9 @@ module resources 'resources.bicep' = {
     sqlAadAdminName: sqlAadAdminName
     sqlAadAdminObjectId: sqlAadAdminObjectId
     sqlConnectionStringKey: sqlConnectionStringKey
+    enableSreAgent: enableSreAgent
+    sreAgentMode: sreAgentMode
+    githubRepoUrl: githubRepoUrl
   }
 }
 
@@ -103,5 +117,7 @@ output AZURE_KEY_VAULT_NAME string = resources.outputs.keyVaultName
 output AZURE_KEY_VAULT_ENDPOINT string = resources.outputs.keyVaultEndpoint
 output AZURE_APPINSIGHTS_NAME string = resources.outputs.appInsightsName
 output AZURE_LOAD_TEST_RESOURCE string = resources.outputs.loadTestingName
+output AZURE_SRE_AGENT_NAME string = resources.outputs.sreAgentName
+output AZURE_SRE_AGENT_MODE string = resources.outputs.sreAgentMode
 output AZURE_WEBAPP_URL string = resources.outputs.webUri
 output AZURE_API_URL string = resources.outputs.apiUri
