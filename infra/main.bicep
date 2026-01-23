@@ -3,9 +3,9 @@
 // =============================================================================
 // This template deploys all required Azure resources:
 // - App Service Plan
-// - Web App (MVC frontend)
-// - API App (Web API backend)
-// - SQL Server with Database
+// - Web App (MVC frontend) with Managed Identity
+// - API App (Web API backend) with Managed Identity
+// - SQL Server with Database (Azure AD-only authentication)
 // - Application Insights
 // - Log Analytics Workspace
 // - Azure Load Testing resource
@@ -27,13 +27,15 @@ param webServiceName string = '${environmentName}-app'
 @description('Name of the API application')
 param apiServiceName string = '${environmentName}-api'
 
-@secure()
-@description('SQL Server administrator password')
-param sqlAdminPassword string
+@description('Azure AD admin object ID for SQL Server')
+param sqlAadAdminObjectId string
 
-@secure()
-@description('SQL application user password')
-param appUserPassword string = sqlAdminPassword
+@description('Azure AD admin principal name (email or service principal name)')
+param sqlAadAdminName string
+
+@description('Azure AD admin principal type')
+@allowed(['User', 'Group', 'Application'])
+param sqlAadAdminType string = 'User'
 
 // Resource group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -54,8 +56,9 @@ module resources 'resources.bicep' = {
     location: location
     webServiceName: webServiceName
     apiServiceName: apiServiceName
-    sqlAdminPassword: sqlAdminPassword
-    appUserPassword: appUserPassword
+    sqlAadAdminObjectId: sqlAadAdminObjectId
+    sqlAadAdminName: sqlAadAdminName
+    sqlAadAdminType: sqlAadAdminType
   }
 }
 

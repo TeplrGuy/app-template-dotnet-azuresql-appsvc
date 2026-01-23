@@ -1,0 +1,475 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "7632207077229587117"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20,
+      "metadata": {
+        "description": "Name of the environment (used as prefix for all resources)"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Primary location for all resources"
+      }
+    },
+    "webServiceName": {
+      "type": "string",
+      "defaultValue": "[format('{0}-app', parameters('environmentName'))]",
+      "metadata": {
+        "description": "Name of the web application"
+      }
+    },
+    "apiServiceName": {
+      "type": "string",
+      "defaultValue": "[format('{0}-api', parameters('environmentName'))]",
+      "metadata": {
+        "description": "Name of the API application"
+      }
+    },
+    "sqlAadAdminObjectId": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure AD admin object ID for SQL Server"
+      }
+    },
+    "sqlAadAdminName": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure AD admin principal name (email or service principal name)"
+      }
+    },
+    "sqlAadAdminType": {
+      "type": "string",
+      "defaultValue": "User",
+      "allowedValues": [
+        "User",
+        "Group",
+        "Application"
+      ],
+      "metadata": {
+        "description": "Azure AD admin principal type"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[format('rg-{0}', parameters('environmentName'))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "project": "ContosoUniversity"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('resources-{0}', parameters('environmentName'))]",
+      "resourceGroup": "[format('rg-{0}', parameters('environmentName'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environmentName": {
+            "value": "[parameters('environmentName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "webServiceName": {
+            "value": "[parameters('webServiceName')]"
+          },
+          "apiServiceName": {
+            "value": "[parameters('apiServiceName')]"
+          },
+          "sqlAadAdminObjectId": {
+            "value": "[parameters('sqlAadAdminObjectId')]"
+          },
+          "sqlAadAdminName": {
+            "value": "[parameters('sqlAadAdminName')]"
+          },
+          "sqlAadAdminType": {
+            "value": "[parameters('sqlAadAdminType')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "7040604114830350603"
+            }
+          },
+          "parameters": {
+            "environmentName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "webServiceName": {
+              "type": "string"
+            },
+            "apiServiceName": {
+              "type": "string"
+            },
+            "sqlAadAdminObjectId": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure AD admin object ID for SQL Server"
+              }
+            },
+            "sqlAadAdminName": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure AD admin principal name (email or service principal name)"
+              }
+            },
+            "sqlAadAdminType": {
+              "type": "string",
+              "defaultValue": "User",
+              "allowedValues": [
+                "User",
+                "Group",
+                "Application"
+              ],
+              "metadata": {
+                "description": "Azure AD admin principal type"
+              }
+            }
+          },
+          "variables": {
+            "tags": {
+              "environment": "[parameters('environmentName')]",
+              "project": "ContosoUniversity",
+              "azd-env-name": "[parameters('environmentName')]"
+            },
+            "sqlServerName": "[format('sql-{0}', parameters('environmentName'))]",
+            "sqlDatabaseName": "[format('sqldb-{0}', parameters('environmentName'))]",
+            "appServicePlanName": "[format('plan-{0}', parameters('environmentName'))]",
+            "appInsightsName": "[format('appi-{0}', parameters('environmentName'))]",
+            "logAnalyticsName": "[format('log-{0}', parameters('environmentName'))]",
+            "loadTestingName": "[format('lt-{0}', parameters('environmentName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/sites/slots",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}/{1}', parameters('webServiceName'), 'staging')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('webServiceName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/firewallRules",
+              "apiVersion": "2022-05-01-preview",
+              "name": "[format('{0}/{1}', variables('sqlServerName'), 'AllowAzureServices')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2022-10-01",
+              "name": "[variables('logAnalyticsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[variables('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2022-09-01",
+              "name": "[variables('appServicePlanName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "sku": {
+                "name": "S1",
+                "tier": "Standard",
+                "capacity": 1
+              },
+              "properties": {
+                "reserved": false
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2022-09-01",
+              "name": "[parameters('webServiceName')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(variables('tags'), createObject('azd-service-name', 'web'))]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "netFrameworkVersion": "v6.0",
+                  "alwaysOn": true,
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "appSettings": [
+                    {
+                      "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                      "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+                    },
+                    {
+                      "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
+                      "value": "~3"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2022-09-01",
+              "name": "[parameters('apiServiceName')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(variables('tags'), createObject('azd-service-name', 'api'))]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "netFrameworkVersion": "v6.0",
+                  "alwaysOn": true,
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "appSettings": [
+                    {
+                      "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                      "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+                    },
+                    {
+                      "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
+                      "value": "~3"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers",
+              "apiVersion": "2022-05-01-preview",
+              "name": "[variables('sqlServerName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "properties": {
+                "version": "12.0",
+                "minimalTlsVersion": "1.2",
+                "publicNetworkAccess": "Enabled",
+                "administrators": {
+                  "administratorType": "ActiveDirectory",
+                  "principalType": "[parameters('sqlAadAdminType')]",
+                  "login": "[parameters('sqlAadAdminName')]",
+                  "sid": "[parameters('sqlAadAdminObjectId')]",
+                  "tenantId": "[subscription().tenantId]",
+                  "azureADOnlyAuthentication": true
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases",
+              "apiVersion": "2022-05-01-preview",
+              "name": "[format('{0}/{1}', variables('sqlServerName'), variables('sqlDatabaseName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "sku": {
+                "name": "S0",
+                "tier": "Standard"
+              },
+              "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "maxSizeBytes": 2147483648
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.LoadTestService/loadTests",
+              "apiVersion": "2022-12-01",
+              "name": "[variables('loadTestingName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "properties": {}
+            },
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}/{1}', parameters('webServiceName'), 'connectionstrings')]",
+              "properties": {
+                "ContosoUniversityAPIContext": {
+                  "value": "[format('Server=tcp:{0},1433;Initial Catalog={1};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;', reference(resourceId('Microsoft.Sql/servers', variables('sqlServerName')), '2022-05-01-preview').fullyQualifiedDomainName, variables('sqlDatabaseName'))]",
+                  "type": "SQLAzure"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('webServiceName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}/{1}', parameters('apiServiceName'), 'connectionstrings')]",
+              "properties": {
+                "ContosoUniversityAPIContext": {
+                  "value": "[format('Server=tcp:{0},1433;Initial Catalog={1};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;', reference(resourceId('Microsoft.Sql/servers', variables('sqlServerName')), '2022-05-01-preview').fullyQualifiedDomainName, variables('sqlDatabaseName'))]",
+                  "type": "SQLAzure"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('apiServiceName'))]",
+                "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "webAppName": {
+              "type": "string",
+              "value": "[parameters('webServiceName')]"
+            },
+            "apiAppName": {
+              "type": "string",
+              "value": "[parameters('apiServiceName')]"
+            },
+            "sqlServerName": {
+              "type": "string",
+              "value": "[variables('sqlServerName')]"
+            },
+            "sqlDatabaseName": {
+              "type": "string",
+              "value": "[variables('sqlDatabaseName')]"
+            },
+            "appInsightsName": {
+              "type": "string",
+              "value": "[variables('appInsightsName')]"
+            },
+            "loadTestingName": {
+              "type": "string",
+              "value": "[variables('loadTestingName')]"
+            },
+            "webUri": {
+              "type": "string",
+              "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('webServiceName')), '2022-09-01').defaultHostName)]"
+            },
+            "apiUri": {
+              "type": "string",
+              "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('apiServiceName')), '2022-09-01').defaultHostName)]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            "sqlServerFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Sql/servers', variables('sqlServerName')), '2022-05-01-preview').fullyQualifiedDomainName]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}', parameters('environmentName')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "AZURE_RESOURCE_GROUP": {
+      "type": "string",
+      "value": "[format('rg-{0}', parameters('environmentName'))]"
+    },
+    "AZURE_WEBAPP_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.webAppName.value]"
+    },
+    "AZURE_API_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.apiAppName.value]"
+    },
+    "AZURE_SQL_SERVER": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.sqlServerName.value]"
+    },
+    "AZURE_SQL_DATABASE": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.sqlDatabaseName.value]"
+    },
+    "AZURE_APPINSIGHTS_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.appInsightsName.value]"
+    },
+    "AZURE_LOAD_TESTING_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.loadTestingName.value]"
+    },
+    "WEB_URI": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.webUri.value]"
+    },
+    "API_URI": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}', parameters('environmentName'))), 'Microsoft.Resources/deployments', format('resources-{0}', parameters('environmentName'))), '2025-04-01').outputs.apiUri.value]"
+    }
+  }
+}

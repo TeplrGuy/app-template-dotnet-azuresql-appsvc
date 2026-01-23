@@ -2,6 +2,7 @@
 // Contoso University - Resource Definitions
 // =============================================================================
 // All Azure resources for the application
+// Uses Azure AD-only authentication for SQL Server (MCAPS policy compliance)
 // =============================================================================
 
 param environmentName string
@@ -9,10 +10,15 @@ param location string
 param webServiceName string
 param apiServiceName string
 
-@secure()
-param sqlAdminPassword string
-@secure()
-param appUserPassword string
+@description('Azure AD admin object ID for SQL Server')
+param sqlAadAdminObjectId string
+
+@description('Azure AD admin principal name (email or service principal name)')
+param sqlAadAdminName string
+
+@description('Azure AD admin principal type')
+@allowed(['User', 'Group', 'Application'])
+param sqlAadAdminType string = 'User'
 
 // Tags for all resources
 var tags = {
@@ -85,6 +91,9 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   name: webServiceName
   location: location
   tags: union(tags, { 'azd-service-name': 'web' })
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
@@ -124,6 +133,9 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
   name: apiServiceName
   location: location
   tags: union(tags, { 'azd-service-name': 'api' })
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
@@ -147,7 +159,7 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
 }
 
 // =============================================================================
-// SQL Server
+// SQL Server (Azure AD-only authentication for MCAPS compliance)
 // =============================================================================
 resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
   name: sqlServerName
@@ -157,8 +169,15 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
     version: '12.0'
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
-    administratorLogin: 'sqladmin'
-    administratorLoginPassword: sqlAdminPassword
+    // Azure AD-only authentication (required by MCAPS policy)
+    administrators: {
+      administratorType: 'ActiveDirectory'
+      principalType: sqlAadAdminType
+      login: sqlAadAdminName
+      sid: sqlAadAdminObjectId
+      tenantId: subscription().tenantId
+      azureADOnlyAuthentication: true
+    }
   }
 
   // Allow Azure services
@@ -200,11 +219,11 @@ resource loadTesting 'Microsoft.LoadTestService/loadTests@2022-12-01' = {
 }
 
 // =============================================================================
-// Connection String Configuration
+// Connection String Configuration (Azure AD authentication)
 // =============================================================================
-// Build connection string for apps (using appUserPassword for app connections)
-// Note: In production, you would create a separate SQL user with limited permissions
-var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=sqladmin;Password=${appUserPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+// Use Managed Identity authentication (AAD) for SQL connections
+// Apps must have their managed identity granted access to the SQL database
+var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;'
 
 // Configure Web App connection string
 resource webAppConnectionStrings 'Microsoft.Web/sites/config@2022-09-01' = {

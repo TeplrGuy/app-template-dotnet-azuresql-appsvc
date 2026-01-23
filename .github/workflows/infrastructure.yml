@@ -50,9 +50,10 @@ env:
   WEBAPP_NAME: ${{ vars.AZURE_ENVIRONMENT_NAME || secrets.AZURE_ENVIRONMENT_NAME }}-app
   API_NAME: ${{ vars.AZURE_ENVIRONMENT_NAME || secrets.AZURE_ENVIRONMENT_NAME }}-api
   
-  # SQL credentials
-  SQL_ADMIN_PASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
-  SQL_APP_PASSWORD: ${{ secrets.AZURE_APP_PASSWORD }}
+  # SQL Azure AD Admin (for Azure AD-only authentication - MCAPS policy compliance)
+  SQL_AAD_ADMIN_OBJECT_ID: ${{ secrets.AZURE_SQL_AAD_ADMIN_OBJECT_ID || secrets.AZURE_CLIENT_ID }}
+  SQL_AAD_ADMIN_NAME: ${{ secrets.AZURE_SQL_AAD_ADMIN_NAME || 'github-actions-sp' }}
+  SQL_AAD_ADMIN_TYPE: ${{ secrets.AZURE_SQL_AAD_ADMIN_TYPE || 'Application' }}
 
 jobs:
   # ===========================================================================
@@ -75,8 +76,8 @@ jobs:
             MISSING="$MISSING AZURE_ENVIRONMENT_NAME"
           fi
           
-          if [ -z "${{ env.SQL_ADMIN_PASSWORD }}" ]; then
-            MISSING="$MISSING AZURE_SQL_PASSWORD"
+          if [ -z "${{ env.SQL_AAD_ADMIN_OBJECT_ID }}" ]; then
+            MISSING="$MISSING AZURE_SQL_AAD_ADMIN_OBJECT_ID (or AZURE_CLIENT_ID as fallback)"
           fi
           
           if [ -n "$MISSING" ]; then
@@ -84,8 +85,8 @@ jobs:
             echo ""
             echo "Please configure the following in your repository settings:"
             echo "  - AZURE_ENVIRONMENT_NAME: Unique prefix for resources"
-            echo "  - AZURE_SQL_PASSWORD: SQL Server admin password"
-            echo "  - AZURE_APP_PASSWORD: SQL app user password (optional)"
+            echo "  - AZURE_SQL_AAD_ADMIN_OBJECT_ID: Azure AD admin object ID for SQL (or uses AZURE_CLIENT_ID)"
+            echo "  - AZURE_SQL_AAD_ADMIN_NAME: Azure AD admin name (optional, defaults to 'github-actions-sp')"
             echo ""
             echo "For OIDC auth, also configure:"
             echo "  - AZURE_CLIENT_ID"
@@ -276,15 +277,15 @@ jobs:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           region: ${{ env.LOCATION }}
           template: infra/main.bicep
-          deploymentMode: Incremental
           deploymentName: 'infra-${{ github.run_id }}'
           parameters: >
             environmentName=${{ env.ENVIRONMENT_NAME }}
             location=${{ env.LOCATION }}
             webServiceName=${{ env.WEBAPP_NAME }}
             apiServiceName=${{ env.API_NAME }}
-            sqlAdminPassword=${{ env.SQL_ADMIN_PASSWORD }}
-            appUserPassword=${{ env.SQL_APP_PASSWORD }}
+            sqlAadAdminObjectId=${{ env.SQL_AAD_ADMIN_OBJECT_ID }}
+            sqlAadAdminName=${{ env.SQL_AAD_ADMIN_NAME }}
+            sqlAadAdminType=${{ env.SQL_AAD_ADMIN_TYPE }}
           failOnStdErr: false
 
       - name: 📋 Deployment Summary
@@ -389,21 +390,12 @@ jobs:
           SQL_DB="${{ steps.discover.outputs.sql_database }}"
           
           if [ -n "$SQL_SERVER" ] && [ -n "$SQL_DB" ]; then
-            # Build SQL connection string (using app user if available, otherwise admin)
-            if [ -n "${{ env.SQL_APP_PASSWORD }}" ]; then
-              SQL_USER="appUser"
-              SQL_PASS="${{ env.SQL_APP_PASSWORD }}"
-            else
-              SQL_USER="sqladmin"
-              SQL_PASS="${{ env.SQL_ADMIN_PASSWORD }}"
-            fi
+            # Build SQL connection string using Azure AD Managed Identity authentication
+            # This works with Azure AD-only authentication (MCAPS policy compliant)
+            SQL_CONN="Server=tcp:${SQL_SERVER},1433;Initial Catalog=${SQL_DB};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;"
             
-            SQL_CONN="Server=tcp:${SQL_SERVER},1433;Initial Catalog=${SQL_DB};Persist Security Info=False;User ID=${SQL_USER};Password=${SQL_PASS};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
-            
-            # Mask the connection string in logs
-            echo "::add-mask::$SQL_CONN"
             echo "sql_connection=$SQL_CONN" >> $GITHUB_OUTPUT
-            echo "✅ SQL connection string built"
+            echo "✅ SQL connection string built (Azure AD auth)"
           else
             echo "⚠️ Cannot build SQL connection string - missing server or database info"
           fi
