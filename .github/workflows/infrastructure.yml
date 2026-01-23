@@ -550,6 +550,22 @@ jobs:
             done
           fi
 
+      - name: 🔐 Enable Managed Identity on Main Apps
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          
+          # Enable managed identity on main API App
+          API="${{ env.API_NAME }}"
+          echo "🔐 Enabling managed identity for main $API..."
+          API_PRINCIPAL=$(az webapp identity assign -g "$RG" -n "$API" --query principalId -o tsv)
+          echo "✅ API managed identity: $API_PRINCIPAL"
+          
+          # Enable managed identity on main Web App
+          WEB="${{ env.WEBAPP_NAME }}"
+          echo "🔐 Enabling managed identity for main $WEB..."
+          WEB_PRINCIPAL=$(az webapp identity assign -g "$RG" -n "$WEB" --query principalId -o tsv)
+          echo "✅ Web App managed identity: $WEB_PRINCIPAL"
+
       - name: 🔐 Grant Key Vault Access to Main Apps
         run: |
           RG="${{ env.RESOURCE_GROUP }}"
@@ -557,33 +573,32 @@ jobs:
           
           # Get Key Vault resource ID
           KV_ID=$(az keyvault show -n "$KV_NAME" --query id -o tsv)
-          ROLE_ID="4633458b-17de-408a-b874-0445c86b69e6"  # Key Vault Secrets User
+          echo "🔑 Key Vault ID: $KV_ID"
           
-          # API App
+          # Key Vault Secrets User role
+          ROLE_ID="4633458b-17de-408a-b874-0445c86b69e6"
+          
+          # API App - Must have access to read secrets
           API="${{ env.API_NAME }}"
-          API_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$API" --query principalId -o tsv 2>/dev/null || echo "")
-          if [ -n "$API_PRINCIPAL" ]; then
-            echo "📝 Granting Key Vault access to $API..."
-            az role assignment create \
-              --assignee-object-id "$API_PRINCIPAL" \
-              --assignee-principal-type ServicePrincipal \
-              --role "$ROLE_ID" \
-              --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
-            echo "✅ Key Vault access granted to $API"
-          fi
+          API_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$API" --query principalId -o tsv)
+          echo "📝 Granting Key Vault Secrets User to $API (Principal: $API_PRINCIPAL)..."
+          az role assignment create \
+            --assignee-object-id "$API_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role may already exist"
+          echo "✅ Key Vault access granted to $API"
           
           # Web App (for future use)
           WEB="${{ env.WEBAPP_NAME }}"
-          WEB_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$WEB" --query principalId -o tsv 2>/dev/null || echo "")
-          if [ -n "$WEB_PRINCIPAL" ]; then
-            echo "📝 Granting Key Vault access to $WEB..."
-            az role assignment create \
-              --assignee-object-id "$WEB_PRINCIPAL" \
-              --assignee-principal-type ServicePrincipal \
-              --role "$ROLE_ID" \
-              --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
-            echo "✅ Key Vault access granted to $WEB"
-          fi
+          WEB_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$WEB" --query principalId -o tsv)
+          echo "📝 Granting Key Vault Secrets User to $WEB (Principal: $WEB_PRINCIPAL)..."
+          az role assignment create \
+            --assignee-object-id "$WEB_PRINCIPAL" \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE_ID" \
+            --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role may already exist"
+          echo "✅ Key Vault access granted to $WEB"
 
       - name: 🎰 Create Web App Slots (staging, qa)
         run: |
@@ -637,54 +652,81 @@ jobs:
             echo "✅ Managed identity enabled for $API/$SLOT"
           done
 
-      - name: 🔑 Grant Key Vault Access to Slots
+      - name: 🔑 Grant Key Vault Access to ALL Apps (Main + Slots)
         run: |
           RG="${{ env.RESOURCE_GROUP }}"
-          KV_NAME="${{ steps.config.outputs.kv_name }}"
+          KV_NAME="kv-${{ env.ENVIRONMENT_NAME }}"
+          API="${{ env.API_NAME }}"
+          WEB="${{ env.WEBAPP_NAME }}"
           
           # Get Key Vault resource ID
-          KV_ID=$(az keyvault show -n "$KV_NAME" --query id -o tsv 2>/dev/null || echo "")
-          
-          if [ -z "$KV_ID" ]; then
-            echo "⚠️ Key Vault $KV_NAME not found - skipping RBAC assignment"
-            echo "Note: Key Vault will be created on next full deployment"
-            exit 0
-          fi
-          
-          echo "🔑 Assigning Key Vault Secrets User role to slot identities..."
+          KV_ID=$(az keyvault show -n "$KV_NAME" --query id -o tsv)
+          echo "🔑 Key Vault ID: $KV_ID"
           
           # Key Vault Secrets User role definition ID
           ROLE_ID="4633458b-17de-408a-b874-0445c86b69e6"
           
-          # API Slots
-          API="${{ env.API_NAME }}"
-          for SLOT in staging qa; do
-            PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$API" -s "$SLOT" --query principalId -o tsv 2>/dev/null || echo "")
-            if [ -n "$PRINCIPAL_ID" ]; then
-              echo "📝 Assigning role to $API/$SLOT (Principal: $PRINCIPAL_ID)..."
-              az role assignment create \
-                --assignee-object-id "$PRINCIPAL_ID" \
-                --assignee-principal-type ServicePrincipal \
-                --role "$ROLE_ID" \
-                --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
-              echo "✅ Key Vault access granted to $API/$SLOT"
+          echo ""
+          echo "========================================="
+          echo "🔐 Granting Key Vault Access to ALL Apps"
+          echo "========================================="
+          
+          # Function to grant access
+          grant_kv_access() {
+            local APP_NAME=$1
+            local SLOT_NAME=$2
+            local PRINCIPAL_ID
+            
+            if [ -z "$SLOT_NAME" ]; then
+              echo "📝 Processing main app: $APP_NAME"
+              PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$APP_NAME" --query principalId -o tsv 2>&1)
+            else
+              echo "📝 Processing slot: $APP_NAME/$SLOT_NAME"
+              PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$APP_NAME" -s "$SLOT_NAME" --query principalId -o tsv 2>&1)
             fi
+            
+            if [ -z "$PRINCIPAL_ID" ] || [[ "$PRINCIPAL_ID" == *"ERROR"* ]]; then
+              echo "  ⚠️ Could not get principal ID - skipping"
+              return
+            fi
+            
+            echo "  Principal ID: $PRINCIPAL_ID"
+            az role assignment create \
+              --assignee-object-id "$PRINCIPAL_ID" \
+              --assignee-principal-type ServicePrincipal \
+              --role "$ROLE_ID" \
+              --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role assignment returned non-zero (may already exist)"
+            echo "  ✅ Done"
+          }
+          
+          # Grant access to MAIN API App
+          echo ""
+          echo "--- Main API App ---"
+          grant_kv_access "$API" ""
+          
+          # Grant access to MAIN Web App
+          echo ""
+          echo "--- Main Web App ---"
+          grant_kv_access "$WEB" ""
+          
+          # Grant access to API Slots
+          echo ""
+          echo "--- API Slots ---"
+          for SLOT in staging qa; do
+            grant_kv_access "$API" "$SLOT"
           done
           
-          # Web App Slots (for future use - they may need Key Vault access too)
-          WEB="${{ env.WEBAPP_NAME }}"
+          # Grant access to Web App Slots
+          echo ""
+          echo "--- Web App Slots ---"
           for SLOT in staging qa; do
-            PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$WEB" -s "$SLOT" --query principalId -o tsv 2>/dev/null || echo "")
-            if [ -n "$PRINCIPAL_ID" ]; then
-              echo "📝 Assigning role to $WEB/$SLOT (Principal: $PRINCIPAL_ID)..."
-              az role assignment create \
-                --assignee-object-id "$PRINCIPAL_ID" \
-                --assignee-principal-type ServicePrincipal \
-                --role "$ROLE_ID" \
-                --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
-              echo "✅ Key Vault access granted to $WEB/$SLOT"
-            fi
+            grant_kv_access "$WEB" "$SLOT"
           done
+          
+          echo ""
+          echo "========================================="
+          echo "✅ Key Vault access granted to all apps"
+          echo "========================================="
 
       - name: ⚙️ Configure API Slot App Settings
         run: |
