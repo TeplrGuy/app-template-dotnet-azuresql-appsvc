@@ -24,6 +24,11 @@ on:
 env:
   AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
 
+# Required for OIDC federated authentication
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   pre-chaos-validation:
     name: 🔍 Pre-Chaos Health Check
@@ -32,7 +37,17 @@ jobs:
       app-healthy: ${{ steps.health.outputs.healthy }}
       
     steps:
-      - name: 🔐 Azure Login
+      - name: 🔐 Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+        id: oidc-login
+
+      - name: 🔐 Azure Login (Service Principal Fallback)
+        if: steps.oidc-login.outcome == 'failure'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -74,7 +89,17 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🔐 Azure Login
+      - name: 🔐 Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+        id: oidc-login
+
+      - name: 🔐 Azure Login (Service Principal Fallback)
+        if: steps.oidc-login.outcome == 'failure'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -160,7 +185,17 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 🔐 Azure Login
+      - name: 🔐 Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+        id: oidc-login
+
+      - name: 🔐 Azure Login (Service Principal Fallback)
+        if: steps.oidc-login.outcome == 'failure'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
