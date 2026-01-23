@@ -19,6 +19,11 @@ on:
       - '.github/workflows/infrastructure.yml'
   workflow_dispatch:
     inputs:
+      force_deploy:
+        description: 'Force redeploy all infrastructure (ignore resource checks)'
+        required: false
+        default: false
+        type: boolean
       deploy_infrastructure:
         description: 'Deploy/update infrastructure'
         required: false
@@ -151,8 +156,120 @@ jobs:
             echo "Infrastructure deployment skipped - no main.bicep found" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: 🏗️ Deploy Bicep Template
+      - name: 🔍 Check Resource Group Exists
         if: steps.check-infra.outputs.has_main_bicep == 'true'
+        id: check-rg
+        run: |
+          if az group show --name "${{ env.RESOURCE_GROUP }}" &>/dev/null; then
+            echo "rg_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Resource group ${{ env.RESOURCE_GROUP }} exists"
+          else
+            echo "rg_exists=false" >> $GITHUB_OUTPUT
+            echo "needs_deploy=true" >> $GITHUB_OUTPUT
+            echo "📝 Resource group ${{ env.RESOURCE_GROUP }} will be created"
+            echo "🚀 Deployment required - resource group doesn't exist"
+          fi
+
+      - name: 🔍 Check Missing Resources
+        if: steps.check-infra.outputs.has_main_bicep == 'true' && steps.check-rg.outputs.rg_exists == 'true'
+        id: check-resources
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          MISSING=""
+          
+          # Check SQL Server
+          if ! az sql server show -g "$RG" -n "sql-${{ env.ENVIRONMENT_NAME }}" &>/dev/null; then
+            MISSING="$MISSING SQL-Server"
+            echo "⚠️ SQL Server not found"
+          else
+            echo "✅ SQL Server exists"
+          fi
+          
+          # Check SQL Database
+          if ! az sql db show -g "$RG" -s "sql-${{ env.ENVIRONMENT_NAME }}" -n "sqldb-${{ env.ENVIRONMENT_NAME }}" &>/dev/null 2>&1; then
+            MISSING="$MISSING SQL-Database"
+            echo "⚠️ SQL Database not found"
+          else
+            echo "✅ SQL Database exists"
+          fi
+          
+          # Check App Service Plan
+          if ! az appservice plan show -g "$RG" -n "plan-${{ env.ENVIRONMENT_NAME }}" &>/dev/null; then
+            MISSING="$MISSING AppServicePlan"
+            echo "⚠️ App Service Plan not found"
+          else
+            echo "✅ App Service Plan exists"
+          fi
+          
+          # Check Web App
+          if ! az webapp show -g "$RG" -n "${{ env.WEBAPP_NAME }}" &>/dev/null; then
+            MISSING="$MISSING WebApp"
+            echo "⚠️ Web App not found"
+          else
+            echo "✅ Web App exists"
+          fi
+          
+          # Check API App
+          if ! az webapp show -g "$RG" -n "${{ env.API_NAME }}" &>/dev/null; then
+            MISSING="$MISSING APIApp"
+            echo "⚠️ API App not found"
+          else
+            echo "✅ API App exists"
+          fi
+          
+          # Check Application Insights
+          if ! az monitor app-insights component show -g "$RG" -a "appi-${{ env.ENVIRONMENT_NAME }}" &>/dev/null; then
+            MISSING="$MISSING AppInsights"
+            echo "⚠️ Application Insights not found"
+          else
+            echo "✅ Application Insights exists"
+          fi
+          
+          # Check Load Testing
+          if ! az load show -g "$RG" -n "lt-${{ env.ENVIRONMENT_NAME }}" &>/dev/null 2>&1; then
+            MISSING="$MISSING LoadTesting"
+            echo "⚠️ Load Testing not found"
+          else
+            echo "✅ Load Testing exists"
+          fi
+          
+          if [ -n "$MISSING" ]; then
+            echo "needs_deploy=true" >> $GITHUB_OUTPUT
+            echo "missing_resources=$MISSING" >> $GITHUB_OUTPUT
+            echo ""
+            echo "📋 Missing resources:$MISSING"
+            echo "🚀 Deployment required!"
+          else
+            echo "needs_deploy=false" >> $GITHUB_OUTPUT
+            echo "✅ All resources exist - deployment will be skipped"
+            echo "💡 Use force_deploy=true to redeploy anyway"
+          fi
+
+      - name: ⏭️ Skip Deploy (All Resources Exist)
+        if: |
+          steps.check-infra.outputs.has_main_bicep == 'true' &&
+          steps.check-rg.outputs.needs_deploy != 'true' &&
+          steps.check-resources.outputs.needs_deploy != 'true' &&
+          inputs.force_deploy != true &&
+          github.event.inputs.force_deploy != 'true'
+        run: |
+          echo "## ⏭️ Infrastructure Deployment Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All resources already exist. Use **force_deploy=true** to redeploy." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Existing Resources:" >> $GITHUB_STEP_SUMMARY
+          echo "- Resource Group: ${{ env.RESOURCE_GROUP }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SQL Server: sql-${{ env.ENVIRONMENT_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Web App: ${{ env.WEBAPP_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- API App: ${{ env.API_NAME }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🏗️ Deploy Bicep Template
+        if: |
+          steps.check-infra.outputs.has_main_bicep == 'true' && 
+          (inputs.force_deploy == true || 
+           github.event.inputs.force_deploy == 'true' || 
+           steps.check-rg.outputs.needs_deploy == 'true' || 
+           steps.check-resources.outputs.needs_deploy == 'true')
         id: deploy
         uses: azure/arm-deploy@v2
         with:
@@ -168,9 +285,24 @@ jobs:
             webServiceName=${{ env.WEBAPP_NAME }}
             apiServiceName=${{ env.API_NAME }}
             sqlAdminPassword=${{ env.SQL_ADMIN_PASSWORD }}
-            appUserPassword=${{ env.SQL_APP_PASSWORD || env.SQL_ADMIN_PASSWORD }}
             appUserPassword=${{ env.SQL_APP_PASSWORD }}
           failOnStdErr: false
+
+      - name: 📋 Deployment Summary
+        if: steps.deploy.outcome == 'success'
+        run: |
+          echo "## 🏗️ Infrastructure Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployed Resources:" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource | Name |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | ${{ env.RESOURCE_GROUP }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web App | ${{ env.WEBAPP_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API App | ${{ env.API_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SQL Server | sql-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SQL Database | sqldb-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Application Insights | appi-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Load Testing | lt-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
   # CONFIGURE APP SETTINGS & CONNECTION STRINGS
