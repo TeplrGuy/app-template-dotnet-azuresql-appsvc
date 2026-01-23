@@ -280,7 +280,65 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
   }
 }
 
-// API App Settings - configured after Key Vault secret and RBAC are ready
+// API App Staging Slot - needs VNet integration and managed identity for Key Vault access
+resource apiStagingSlot 'Microsoft.Web/sites/slots@2022-09-01' = {
+  parent: apiApp
+  name: 'staging'
+  location: location
+  tags: tags
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    virtualNetworkSubnetId: '${vnet.id}/subnets/${appSubnetName}'
+    siteConfig: {
+      netFrameworkVersion: 'v6.0'
+      alwaysOn: true
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      vnetRouteAllEnabled: true
+      appSettings: [
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+      ]
+    }
+  }
+}
+
+// Key Vault access for API Staging Slot
+resource apiStagingSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, apiStagingSlot.id, keyVaultSecretsUserRole)
+  scope: keyVault
+  properties: {
+    principalId: apiStagingSlot.identity.principalId
+    roleDefinitionId: keyVaultSecretsUserRole
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// API Staging Slot Settings - configured after Key Vault access is ready
+resource apiStagingSlotSettings 'Microsoft.Web/sites/slots/config@2022-09-01' = {
+  parent: apiStagingSlot
+  name: 'appsettings'
+  properties: {
+    APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    ConnectionStrings__ContosoUniversityAPIContext: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${sqlConnectionStringKey})'
+  }
+  dependsOn: [
+    apiStagingSlotKeyVaultAccess
+    sqlConnectionStringSecretSql
+    sqlConnectionStringSecretAad
+  ]
+}
 // Using Key Vault references to avoid race conditions during app startup
 resource apiAppSettings 'Microsoft.Web/sites/config@2022-09-01' = {
   parent: apiApp
