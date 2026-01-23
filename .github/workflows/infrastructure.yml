@@ -57,8 +57,8 @@ env:
   SQL_APP_USER: appUser
   SQL_CONNECTION_STRING_KEY: AZURE-SQL-CONNECTION-STRING
   
-  # SRE Agent Configuration
-  ENABLE_SRE_AGENT: ${{ vars.ENABLE_SRE_AGENT || 'true' }}
+  # SRE Agent Configuration (disabled by default - requires Owner role for RBAC)
+  ENABLE_SRE_AGENT: ${{ vars.ENABLE_SRE_AGENT || 'false' }}
   SRE_AGENT_MODE: ${{ vars.SRE_AGENT_MODE || 'Review' }}
   GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
 
