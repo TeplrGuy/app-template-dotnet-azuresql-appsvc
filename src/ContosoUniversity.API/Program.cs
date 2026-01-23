@@ -8,17 +8,10 @@ using Microsoft.Extensions.Configuration;
 
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = "";
-if (builder.Configuration["AZURE_KEY_VAULT_ENDPOINT"] != null)
-{
-    var credential = new DefaultAzureCredential();
-    builder.Configuration.AddAzureKeyVault(new Uri(builder.Configuration["AZURE_KEY_VAULT_ENDPOINT"]), credential);
-    connectionString = builder.Configuration[builder.Configuration["AZURE_SQL_CONNECTION_STRING_KEY"]];
-}
-else
-{
-    connectionString = builder.Configuration.GetConnectionString("ContosoUniversityAPIContext");
-}
+
+// Connection string is provided via Key Vault reference in App Service settings
+// or via ConnectionStrings:ContosoUniversityAPIContext in local development
+var connectionString = builder.Configuration.GetConnectionString("ContosoUniversityAPIContext");
 
 builder.Services.AddDbContext<ContosoUniversityAPIContext>(options =>
 {

@@ -211,17 +211,26 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
         }
-        {
-          name: 'AZURE_KEY_VAULT_ENDPOINT'
-          value: keyVault.properties.vaultUri
-        }
-        {
-          name: 'AZURE_SQL_CONNECTION_STRING_KEY'
-          value: sqlConnectionStringKey
-        }
       ]
     }
   }
+}
+
+// API App Settings - configured after Key Vault secret and RBAC are ready
+// Using Key Vault references to avoid race conditions during app startup
+resource apiAppSettings 'Microsoft.Web/sites/config@2022-09-01' = {
+  parent: apiApp
+  name: 'appsettings'
+  properties: {
+    APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    ConnectionStrings__ContosoUniversityAPIContext: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${sqlConnectionStringKey})'
+  }
+  dependsOn: [
+    apiAppKeyVaultAccess
+    sqlConnectionStringSecretSql
+    sqlConnectionStringSecretAad
+  ]
 }
 
 // =============================================================================
