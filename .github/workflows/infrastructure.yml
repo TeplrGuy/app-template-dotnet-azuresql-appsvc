@@ -399,11 +399,211 @@ jobs:
           echo "- \`AZURE_WEBAPP_URL\`, \`AZURE_API_URL\`" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
+  # CONFIGURE DEPLOYMENT SLOTS
+  # Creates slots for API app and configures all slots with managed identity,
+  # Key Vault access, and app settings for SQL connectivity
+  # ===========================================================================
+  configure-slots:
+    name: 🎰 Configure Deployment Slots
+    needs: [validate, deploy-infra]
+    if: always() && needs.validate.result == 'success' && needs.deploy-infra.result == 'success'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+        id: oidc-login
+
+      - name: 🔐 Azure Login (Service Principal Fallback)
+        if: steps.oidc-login.outcome == 'failure'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 📋 Define Slot Configuration
+        id: config
+        run: |
+          echo "🔧 Configuring deployment slots..."
+          echo ""
+          echo "Environment: ${{ env.ENVIRONMENT_NAME }}"
+          echo "Resource Group: ${{ env.RESOURCE_GROUP }}"
+          echo "Web App: ${{ env.WEBAPP_NAME }}"
+          echo "API App: ${{ env.API_NAME }}"
+          echo "SQL Auth Mode: ${{ env.SQL_AUTH_MODE }}"
+          echo ""
+          
+          # Store values for later steps
+          echo "kv_name=kv-${{ env.ENVIRONMENT_NAME }}" >> $GITHUB_OUTPUT
+          echo "kv_endpoint=https://kv-${{ env.ENVIRONMENT_NAME }}.vault.azure.net/" >> $GITHUB_OUTPUT
+
+      - name: 🎰 Create API Slots (staging, qa)
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          API="${{ env.API_NAME }}"
+          
+          for SLOT in staging qa; do
+            echo "🔍 Checking if $SLOT slot exists for $API..."
+            if az webapp deployment slot list -g "$RG" -n "$API" --query "[?name=='$SLOT']" -o tsv | grep -q "$SLOT"; then
+              echo "✅ Slot $SLOT already exists"
+            else
+              echo "📝 Creating $SLOT slot for $API..."
+              az webapp deployment slot create -g "$RG" -n "$API" -s "$SLOT" --configuration-source "$API"
+              echo "✅ Created $SLOT slot"
+            fi
+          done
+
+      - name: 🔐 Enable Managed Identity on All Slots
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          
+          # API Slots
+          API="${{ env.API_NAME }}"
+          for SLOT in staging qa; do
+            echo "🔐 Enabling managed identity for $API/$SLOT..."
+            az webapp identity assign -g "$RG" -n "$API" -s "$SLOT" --query principalId -o tsv
+            echo "✅ Managed identity enabled for $API/$SLOT"
+          done
+          
+          # Web App Slots
+          WEB="${{ env.WEBAPP_NAME }}"
+          for SLOT in staging qa; do
+            echo "🔐 Enabling managed identity for $WEB/$SLOT..."
+            az webapp identity assign -g "$RG" -n "$WEB" -s "$SLOT" --query principalId -o tsv
+            echo "✅ Managed identity enabled for $WEB/$SLOT"
+          done
+
+      - name: 🔑 Grant Key Vault Access to Slots
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          KV_NAME="${{ steps.config.outputs.kv_name }}"
+          
+          # Get Key Vault resource ID
+          KV_ID=$(az keyvault show -n "$KV_NAME" --query id -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$KV_ID" ]; then
+            echo "⚠️ Key Vault $KV_NAME not found - skipping RBAC assignment"
+            echo "Note: Key Vault will be created on next full deployment"
+            exit 0
+          fi
+          
+          echo "🔑 Assigning Key Vault Secrets User role to slot identities..."
+          
+          # Key Vault Secrets User role definition ID
+          ROLE_ID="4633458b-17de-408a-b874-0445c86b69e6"
+          
+          # API Slots
+          API="${{ env.API_NAME }}"
+          for SLOT in staging qa; do
+            PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$API" -s "$SLOT" --query principalId -o tsv 2>/dev/null || echo "")
+            if [ -n "$PRINCIPAL_ID" ]; then
+              echo "📝 Assigning role to $API/$SLOT (Principal: $PRINCIPAL_ID)..."
+              az role assignment create \
+                --assignee-object-id "$PRINCIPAL_ID" \
+                --assignee-principal-type ServicePrincipal \
+                --role "$ROLE_ID" \
+                --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
+              echo "✅ Key Vault access granted to $API/$SLOT"
+            fi
+          done
+          
+          # Web App Slots (for future use - they may need Key Vault access too)
+          WEB="${{ env.WEBAPP_NAME }}"
+          for SLOT in staging qa; do
+            PRINCIPAL_ID=$(az webapp identity show -g "$RG" -n "$WEB" -s "$SLOT" --query principalId -o tsv 2>/dev/null || echo "")
+            if [ -n "$PRINCIPAL_ID" ]; then
+              echo "📝 Assigning role to $WEB/$SLOT (Principal: $PRINCIPAL_ID)..."
+              az role assignment create \
+                --assignee-object-id "$PRINCIPAL_ID" \
+                --assignee-principal-type ServicePrincipal \
+                --role "$ROLE_ID" \
+                --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
+              echo "✅ Key Vault access granted to $WEB/$SLOT"
+            fi
+          done
+
+      - name: ⚙️ Configure API Slot App Settings
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          API="${{ env.API_NAME }}"
+          KV_ENDPOINT="${{ steps.config.outputs.kv_endpoint }}"
+          CONN_KEY="${{ env.SQL_CONNECTION_STRING_KEY }}"
+          
+          # Get App Insights connection string from main app
+          APPINSIGHTS_CONN=$(az webapp config appsettings list -g "$RG" -n "$API" \
+            --query "[?name=='APPLICATIONINSIGHTS_CONNECTION_STRING'].value" -o tsv)
+          
+          for SLOT in staging qa; do
+            echo "⚙️ Configuring app settings for $API/$SLOT..."
+            
+            az webapp config appsettings set -g "$RG" -n "$API" -s "$SLOT" \
+              --settings \
+                "AZURE_KEY_VAULT_ENDPOINT=$KV_ENDPOINT" \
+                "AZURE_SQL_CONNECTION_STRING_KEY=$CONN_KEY" \
+                "ApplicationInsightsAgent_EXTENSION_VERSION=~3" \
+                "APPLICATIONINSIGHTS_CONNECTION_STRING=$APPINSIGHTS_CONN" \
+              --output none
+            
+            echo "✅ App settings configured for $API/$SLOT"
+          done
+
+      - name: ⚙️ Configure Web App Slot App Settings
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          WEB="${{ env.WEBAPP_NAME }}"
+          API="${{ env.API_NAME }}"
+          
+          # Get App Insights connection string from main app
+          APPINSIGHTS_CONN=$(az webapp config appsettings list -g "$RG" -n "$WEB" \
+            --query "[?name=='APPLICATIONINSIGHTS_CONNECTION_STRING'].value" -o tsv)
+          
+          for SLOT in staging qa; do
+            echo "⚙️ Configuring app settings for $WEB/$SLOT..."
+            
+            # Each slot points to the corresponding API slot
+            API_URL="https://${API}-${SLOT}.azurewebsites.net"
+            
+            az webapp config appsettings set -g "$RG" -n "$WEB" -s "$SLOT" \
+              --settings \
+                "Api__Address=$API_URL" \
+                "ApplicationInsightsAgent_EXTENSION_VERSION=~3" \
+                "APPLICATIONINSIGHTS_CONNECTION_STRING=$APPINSIGHTS_CONN" \
+              --output none
+            
+            echo "✅ App settings configured for $WEB/$SLOT (Api: $API_URL)"
+          done
+
+      - name: 📋 Slot Configuration Summary
+        run: |
+          echo "## 🎰 Deployment Slots Configured" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### API Slots (${{ env.API_NAME }}):" >> $GITHUB_STEP_SUMMARY
+          echo "| Slot | URL | Settings |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| staging | https://${{ env.API_NAME }}-staging.azurewebsites.net | Key Vault + SQL |" >> $GITHUB_STEP_SUMMARY
+          echo "| qa | https://${{ env.API_NAME }}-qa.azurewebsites.net | Key Vault + SQL |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Web App Slots (${{ env.WEBAPP_NAME }}):" >> $GITHUB_STEP_SUMMARY
+          echo "| Slot | URL | API Endpoint |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|--------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| staging | https://${{ env.WEBAPP_NAME }}-staging.azurewebsites.net | ${{ env.API_NAME }}-staging |" >> $GITHUB_STEP_SUMMARY
+          echo "| qa | https://${{ env.WEBAPP_NAME }}-qa.azurewebsites.net | ${{ env.API_NAME }}-qa |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration Applied:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Managed identity enabled on all slots" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Key Vault Secrets User role assigned" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ App settings configured for SQL connectivity" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
   # VERIFY DEPLOYMENT (Configuration is done via Bicep + Key Vault)
   # ===========================================================================
   verify-deployment:
     name: ✅ Verify Deployment
-    needs: [validate, deploy-infra]
+    needs: [validate, deploy-infra, configure-slots]
     if: always() && needs.validate.result == 'success' && needs.deploy-infra.result == 'success'
     runs-on: ubuntu-latest
     

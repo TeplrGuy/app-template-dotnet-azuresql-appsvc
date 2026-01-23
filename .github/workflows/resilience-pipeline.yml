@@ -67,9 +67,11 @@ env:
   DOTNET_VERSION: '6.0.x'
   # Auto-discovered from infrastructure deployment (set by infrastructure.yml)
   AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+  AZURE_API_NAME: ${{ vars.AZURE_API_NAME }}
   AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
   AZURE_LOAD_TEST_RESOURCE: ${{ vars.AZURE_LOAD_TEST_RESOURCE }}
   AZURE_WEBAPP_URL: ${{ vars.AZURE_WEBAPP_URL }}
+  AZURE_API_URL: ${{ vars.AZURE_API_URL }}
 
 # Required for OIDC federated authentication with Azure
 permissions:
@@ -174,13 +176,38 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 🚀 Deploy to QA slot
+      - name: 🚀 Deploy API to QA slot
+        id: deploy-api
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_API_NAME }}
+          slot-name: qa
+          package: ./publish/api
+
+      - name: 🚀 Deploy Web App to QA slot
         id: deploy
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: qa
           package: ./publish/webapp
+
+      - name: 🏥 API Smoke Test
+        run: |
+          echo "⏳ Waiting for API to warm up..."
+          sleep 20
+          
+          API_URL="https://${{ env.AZURE_API_NAME }}-qa.azurewebsites.net"
+          
+          for i in {1..3}; do
+            response=$(curl -sL -o /dev/null -w "%{http_code}" "${API_URL}/api/values" 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ API smoke test passed!"
+              break
+            fi
+            echo "⏳ API Attempt $i: HTTP $response - Retrying..."
+            sleep 10
+          done
 
       - name: 🏥 Smoke Test
         run: |
@@ -287,13 +314,38 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 🚀 Deploy to Staging
+      - name: 🚀 Deploy API to Staging
+        id: deploy-api
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_API_NAME }}
+          slot-name: staging
+          package: ./publish/api
+
+      - name: 🚀 Deploy Web App to Staging
         id: deploy
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: staging
           package: ./publish/webapp
+
+      - name: 🏥 API Health Check
+        run: |
+          echo "⏳ Waiting for API to warm up..."
+          sleep 20
+          
+          API_URL="https://${{ env.AZURE_API_NAME }}-staging.azurewebsites.net"
+          
+          for i in {1..5}; do
+            response=$(curl -sL -o /dev/null -w "%{http_code}" "${API_URL}/api/values" 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ API health check passed!"
+              break
+            fi
+            echo "⏳ API Attempt $i: HTTP $response - Retrying..."
+            sleep 15
+          done
 
       - name: 🏥 Health Check
         run: |
@@ -525,27 +577,52 @@ jobs:
       - name: 📊 Pre-Swap Health Check
         run: |
           echo "🔍 Verifying staging is healthy before swap..."
-          # Use HTTPS and follow redirects
+          
+          # Check Web App staging
           HEALTH_URL=$(echo "${{ needs.deploy-staging.outputs.webapp-url }}" | sed 's/http:/https:/')
           response=$(curl -sL -o /dev/null -w "%{http_code}" "${HEALTH_URL}/health" 2>/dev/null || echo "000")
           
           if [ "$response" != "200" ]; then
-            echo "❌ Staging health check failed (HTTP $response). Aborting production deployment."
+            echo "❌ Web App staging health check failed (HTTP $response). Aborting production deployment."
             exit 1
           fi
-          echo "✅ Staging is healthy. Proceeding with swap."
+          echo "✅ Web App staging is healthy."
+          
+          # Check API staging
+          API_URL="https://${{ env.AZURE_API_NAME }}-staging.azurewebsites.net"
+          api_response=$(curl -sL -o /dev/null -w "%{http_code}" "${API_URL}/api/values" 2>/dev/null || echo "000")
+          
+          if [ "$api_response" != "200" ]; then
+            echo "❌ API staging health check failed (HTTP $api_response). Aborting production deployment."
+            exit 1
+          fi
+          echo "✅ API staging is healthy. Proceeding with swap."
 
-      - name: 🔄 Swap Staging to Production
-        id: swap
+      - name: 🔄 Swap API Staging to Production
+        id: swap-api
         run: |
-          echo "🔄 Swapping staging to production..."
+          echo "🔄 Swapping API staging to production..."
           az webapp deployment slot swap \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.AZURE_API_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --slot staging \
             --target-slot production
           
           echo "swapped=true" >> $GITHUB_OUTPUT
+          echo "✅ API swapped to production"
+
+      - name: 🔄 Swap Web App Staging to Production
+        id: swap
+        run: |
+          echo "🔄 Swapping Web App staging to production..."
+          az webapp deployment slot swap \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --slot staging \
+            --target-slot production
+          
+          echo "swapped=true" >> $GITHUB_OUTPUT
+          echo "✅ Web App swapped to production"
 
       - name: 🏥 Production Health Check
         id: health
@@ -553,31 +630,69 @@ jobs:
           echo "⏳ Waiting for swap to complete..."
           sleep 60
           
+          # Check Web App
+          echo "🔍 Checking Web App production..."
           for i in {1..5}; do
             response=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health" 2>/dev/null || echo "000")
             
             if [ "$response" = "200" ]; then
-              echo "✅ Production health check passed!"
+              echo "✅ Web App production health check passed!"
+              break
+            fi
+            echo "⏳ Web App attempt $i: HTTP $response - Retrying..."
+            sleep 15
+          done
+          
+          if [ "$response" != "200" ]; then
+            echo "healthy=false" >> $GITHUB_OUTPUT
+            echo "❌ Web App production health check failed!"
+            exit 1
+          fi
+          
+          # Check API
+          echo "🔍 Checking API production..."
+          for i in {1..5}; do
+            api_response=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ env.AZURE_API_NAME }}.azurewebsites.net/api/values" 2>/dev/null || echo "000")
+            
+            if [ "$api_response" = "200" ]; then
+              echo "✅ API production health check passed!"
               echo "healthy=true" >> $GITHUB_OUTPUT
               exit 0
             fi
-            echo "⏳ Attempt $i: HTTP $response - Retrying..."
+            echo "⏳ API attempt $i: HTTP $api_response - Retrying..."
             sleep 15
           done
           
           echo "healthy=false" >> $GITHUB_OUTPUT
-          echo "❌ Production health check failed!"
+          echo "❌ API production health check failed!"
           exit 1
 
       - name: 🔄 Rollback on Failure
-        if: failure() && steps.swap.outputs.swapped == 'true'
+        if: failure() && (steps.swap.outputs.swapped == 'true' || steps.swap-api.outputs.swapped == 'true')
         run: |
           echo "🔄 Rolling back to previous production version..."
-          az webapp deployment slot swap \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --slot staging \
-            --target-slot production
+          
+          # Rollback API
+          if [ "${{ steps.swap-api.outputs.swapped }}" == "true" ]; then
+            echo "🔄 Rolling back API..."
+            az webapp deployment slot swap \
+              --name ${{ env.AZURE_API_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --slot staging \
+              --target-slot production || true
+            echo "✅ API rollback completed"
+          fi
+          
+          # Rollback Web App
+          if [ "${{ steps.swap.outputs.swapped }}" == "true" ]; then
+            echo "🔄 Rolling back Web App..."
+            az webapp deployment slot swap \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --slot staging \
+              --target-slot production || true
+            echo "✅ Web App rollback completed"
+          fi
           
           echo "✅ Rollback completed"
 
@@ -595,6 +710,7 @@ jobs:
         run: |
           echo "🔍 Running synthetic health checks on production..."
           
+          # Web App endpoints
           endpoints=(
             "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/"
             "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health"
@@ -602,8 +718,29 @@ jobs:
             "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/Courses"
           )
           
+          # API endpoints
+          api_endpoints=(
+            "https://${{ env.AZURE_API_NAME }}.azurewebsites.net/api/values"
+            "https://${{ env.AZURE_API_NAME }}.azurewebsites.net/api/students"
+            "https://${{ env.AZURE_API_NAME }}.azurewebsites.net/api/courses"
+          )
+          
           all_passed=true
+          
+          echo "📱 Web App Endpoints:"
           for endpoint in "${endpoints[@]}"; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$endpoint" 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ $endpoint - HTTP $response"
+            else
+              echo "❌ $endpoint - HTTP $response"
+              all_passed=false
+            fi
+          done
+          
+          echo ""
+          echo "🔌 API Endpoints:"
+          for endpoint in "${api_endpoints[@]}"; do
             response=$(curl -s -o /dev/null -w "%{http_code}" "$endpoint" 2>/dev/null || echo "000")
             if [ "$response" = "200" ]; then
               echo "✅ $endpoint - HTTP $response"
@@ -639,11 +776,17 @@ jobs:
           echo "| 🔨 Build | ${{ needs.build.result }} | Version: ${{ needs.build.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🌍 Staging | ${{ needs.deploy-staging.result }} | ${{ needs.deploy-staging.outputs.webapp-url }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 📊 Load Test | ${{ needs.load-test-staging.result }} | Production-like load (50 VUs, 5 min) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🚀 Production | ${{ needs.deploy-production.result }} | https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🚀 Production | ${{ needs.deploy-production.result }} | Web + API deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Production URLs" >> $GITHUB_STEP_SUMMARY
+          echo "| App | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| Web App | https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net |" >> $GITHUB_STEP_SUMMARY
+          echo "| API | https://${{ env.AZURE_API_NAME }}.azurewebsites.net |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📈 Best Practices Applied" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Shift-left testing (unit tests → smoke → load → chaos)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Load testing as deployment gate" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Chaos engineering in staging (not production)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Automated rollback on failure" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Automated rollback on failure (Web App + API)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Synthetic monitoring in production" >> $GITHUB_STEP_SUMMARY

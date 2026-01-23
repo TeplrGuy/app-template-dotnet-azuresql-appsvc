@@ -228,7 +228,10 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
 // Key Vault Access for Apps (RBAC)
 // =============================================================================
 // Key Vault Secrets User role
-var keyVaultSecretsUserRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+var keyVaultSecretsUserRole = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '4633458b-17de-408a-b874-0445c86b69e6'
+)
 
 resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVault.id, webApp.id, keyVaultSecretsUserRole)
