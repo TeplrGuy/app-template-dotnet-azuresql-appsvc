@@ -723,6 +723,31 @@ jobs:
           echo "  Web Main:    $WEB_PRINCIPAL"
           echo "  Web Staging: $WEB_STAGING_PRINCIPAL"
           echo "  Web QA:      $WEB_QA_PRINCIPAL"
+          
+          echo ""
+          echo "⏳ Waiting 60 seconds for RBAC propagation..."
+          sleep 60
+          echo "✅ RBAC propagation wait complete"
+
+      - name: 🔄 Restart Apps to Apply Key Vault Access
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          API="${{ env.API_NAME }}"
+          WEB="${{ env.WEBAPP_NAME }}"
+          
+          echo "🔄 Restarting apps to pick up new Key Vault permissions..."
+          
+          # Restart main apps
+          az webapp restart -g "$RG" -n "$API"
+          az webapp restart -g "$RG" -n "$WEB"
+          
+          # Restart slots
+          az webapp restart -g "$RG" -n "$API" -s staging
+          az webapp restart -g "$RG" -n "$API" -s qa
+          az webapp restart -g "$RG" -n "$WEB" -s staging
+          az webapp restart -g "$RG" -n "$WEB" -s qa
+          
+          echo "✅ All apps restarted"
 
       - name: ⚙️ Configure API Slot App Settings
         run: |
