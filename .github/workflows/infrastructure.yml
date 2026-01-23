@@ -168,6 +168,7 @@ jobs:
             webServiceName=${{ env.WEBAPP_NAME }}
             apiServiceName=${{ env.API_NAME }}
             sqlAdminPassword=${{ env.SQL_ADMIN_PASSWORD }}
+            appUserPassword=${{ env.SQL_APP_PASSWORD || env.SQL_ADMIN_PASSWORD }}
             appUserPassword=${{ env.SQL_APP_PASSWORD }}
           failOnStdErr: false
 
