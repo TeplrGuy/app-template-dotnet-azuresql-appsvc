@@ -472,32 +472,47 @@ jobs:
         run: |
           KV_NAME="kv-${{ env.ENVIRONMENT_NAME }}"
           KV_ID="${{ steps.keyvault.outputs.kv_id }}"
+          CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}"
           
-          # Get the current service principal's object ID
-          CURRENT_USER=$(az ad signed-in-user show --query id -o tsv 2>/dev/null || echo "")
+          echo "🔍 Getting service principal object ID for client: $CLIENT_ID"
           
-          if [ -z "$CURRENT_USER" ]; then
-            # Running as service principal, get the object ID from the client ID
-            CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}"
-            CURRENT_USER=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+          # Get the service principal's object ID from the client/app ID
+          SP_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$SP_OBJECT_ID" ]; then
+            echo "⚠️ Could not find service principal by client ID, trying alternative method..."
+            # Try listing service principals by app ID
+            SP_OBJECT_ID=$(az ad sp list --filter "appId eq '$CLIENT_ID'" --query "[0].id" -o tsv 2>/dev/null || echo "")
           fi
           
-          if [ -n "$CURRENT_USER" ]; then
+          if [ -n "$SP_OBJECT_ID" ]; then
+            echo "✅ Found service principal object ID: $SP_OBJECT_ID"
             echo "📝 Granting Key Vault Secrets Officer role to pipeline identity..."
+            
             # Key Vault Secrets Officer role - allows read/write secrets
             OFFICER_ROLE="b86a8fe4-44ce-4948-aee5-eccb2c155cd7"
             
+            # Create role assignment
             az role assignment create \
-              --assignee-object-id "$CURRENT_USER" \
+              --assignee-object-id "$SP_OBJECT_ID" \
               --assignee-principal-type ServicePrincipal \
               --role "$OFFICER_ROLE" \
-              --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
+              --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role assignment returned non-zero (may already exist)"
             
             echo "✅ Key Vault Secrets Officer role granted"
-            echo "⏳ Waiting for RBAC propagation..."
-            sleep 30
+            echo "⏳ Waiting 60s for RBAC propagation..."
+            sleep 60
           else
-            echo "⚠️ Could not determine pipeline identity - secret creation may fail"
+            echo "❌ Could not determine pipeline identity"
+            echo "Attempting to use --assignee with client ID directly..."
+            
+            az role assignment create \
+              --assignee "$CLIENT_ID" \
+              --role "Key Vault Secrets Officer" \
+              --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role assignment returned non-zero"
+            
+            echo "⏳ Waiting 60s for RBAC propagation..."
+            sleep 60
           fi
 
       - name: 🔐 Store SQL Connection String in Key Vault
@@ -523,8 +538,16 @@ jobs:
               CONN_STRING="Server=tcp:${SQL_SERVER}.database.windows.net,1433;Database=${SQL_DB};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
             fi
             
-            az keyvault secret set --vault-name "$KV_NAME" -n "$CONN_KEY" --value "$CONN_STRING"
-            echo "✅ Connection string secret created"
+            # Retry logic for RBAC propagation
+            for i in {1..3}; do
+              if az keyvault secret set --vault-name "$KV_NAME" -n "$CONN_KEY" --value "$CONN_STRING" 2>&1; then
+                echo "✅ Connection string secret created"
+                break
+              else
+                echo "⏳ Attempt $i failed, waiting 30s for RBAC propagation..."
+                sleep 30
+              fi
+            done
           fi
 
       - name: 🔐 Grant Key Vault Access to Main Apps
