@@ -1,0 +1,24 @@
+# Chaos Resilience Test Configuration
+# Designed to run during chaos experiments with relaxed thresholds
+
+version: v0.1
+testId: chaos-resilience
+testName: Chaos Resilience Test
+testPlan: chaos-resilience.jmx
+engineInstances: 1
+
+# Relaxed criteria - we expect degradation during chaos
+failureCriteria:
+  - avg(response_time_ms) > 4000
+  - percentage(error) > 5
+  - p95(response_time_ms) > 6000
+
+env:
+  - name: webapp_url
+    value: ${WEBAPP_URL}
+  - name: concurrent_users
+    value: "50"
+  - name: duration_seconds  
+    value: "600"
+  - name: ramp_up_seconds
+    value: "60"

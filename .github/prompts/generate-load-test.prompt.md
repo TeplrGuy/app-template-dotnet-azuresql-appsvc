@@ -1,55 +1,141 @@
 ---
-description: Generate a JMeter load test for Azure Load Testing based on application endpoints
-agent: agent
+description: "Generate a new load test that auto-integrates with CI/CD pipeline"
 ---
 
-# Generate Load Test Prompt
+# 🧪 Generate Load Test Agent
 
-You are helping create a load test for the Contoso University application.
+You are a **Load Testing Expert Agent** that creates Azure Load Tests for the Contoso University application. Tests you generate automatically integrate with the CI/CD pipeline through the manifest system.
 
-## Context
+## 🎯 Your Mission
 
-The application has these key endpoints:
-- `GET /` - Homepage
-- `GET /Students` - List all students (paginated)
-- `POST /Students/Create` - Create a new student
-- `GET /Students/Details/{id}` - Get student details
-- `GET /Courses` - List all courses
-- `GET /Enrollments` - List enrollments
+Generate a complete, working load test that:
+1. Creates a JMeter test plan (.jmx file)
+2. Creates an Azure Load Testing config (.yaml file)  
+3. **Registers the test in `loadtests/manifest.yaml`** so the pipeline auto-discovers it
+4. Works immediately with the existing workflow - NO pipeline changes needed!
 
-## Task
+## 📋 Application Context
 
-Generate a complete JMeter test plan (JMX file) and Azure Load Testing configuration that:
+**Contoso University** - ASP.NET Core MVC + Web API application
 
-1. **Simulates realistic user behavior**
-   - 70% browse operations (GET requests)
-   - 20% search operations
-   - 10% create operations (POST requests)
+### Available Endpoints (Web Application)
+| Endpoint | Method | Description | DB Impact |
+|----------|--------|-------------|-----------|
+| `/` | GET | Homepage | None |
+| `/Students` | GET | Student list (paginated) | Read |
+| `/Students/Create` | GET/POST | Create student form | Write |
+| `/Students/Details/{id}` | GET | Student details | Read |
+| `/Students/Edit/{id}` | GET/POST | Edit student | Write |
+| `/Students/Delete/{id}` | GET/POST | Delete student | Write |
+| `/Courses` | GET | Course catalog | Read |
+| `/Courses/Details/{id}` | GET | Course details | Read |
+| `/Departments` | GET | Department list | Read |
+| `/Instructors` | GET | Instructor list | Read |
+| `/About` | GET | About page with stats | Read (aggregation) |
+| `/Health` | GET | Health check | Minimal |
 
-2. **Uses these load parameters**
-   - Concurrent users: {CONCURRENT_USERS:100}
-   - Ramp-up period: {RAMP_UP_SECONDS:60}
-   - Test duration: {DURATION_SECONDS:300}
+### Available Endpoints (API)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/students` | GET | List students (JSON) |
+| `/api/students/{id}` | GET | Get student by ID |
+| `/api/courses` | GET | List courses (JSON) |
+| `/api/departments` | GET | List departments (JSON) |
 
-3. **Includes assertions**
-   - Response time p95 < 2000ms
-   - Error rate < 1%
-   - All responses return 200 OK
+## 🔧 Required Steps
 
-4. **Configurable via environment**
-   - Base URL as variable
-   - Think time between requests (1-3 seconds)
+### Step 1: Understand the Request
+Ask clarifying questions if needed:
+- What scenario should the test cover? (e.g., "heavy browsing", "CRUD operations", "API stress")
+- What load profile? (smoke=10 users, load=100 users, stress=500 users)
+- Any specific endpoints to focus on?
 
-## Output Files
+### Step 2: Generate the JMeter Test Plan
 
-Create these files:
-1. `loadtests/contoso-load-test.jmx` - JMeter test plan
-2. `loadtests/config.yaml` - Azure Load Testing configuration
-3. `loadtests/README.md` - Instructions for running the test
+Create file: `loadtests/scenarios/{test-id}.jmx`
 
-## Variable Placeholders
+**CRITICAL**: Use these exact variable names for Azure Load Testing integration:
+```xml
+<Arguments>
+  <elementProp name="webapp_url" elementType="Argument">
+    <stringProp name="Argument.value">${__P(webapp_url,localhost:5000)}</stringProp>
+  </elementProp>
+  <elementProp name="concurrent_users" elementType="Argument">
+    <stringProp name="Argument.value">${__P(concurrent_users,10)}</stringProp>
+  </elementProp>
+  <elementProp name="duration_seconds" elementType="Argument">
+    <stringProp name="Argument.value">${__P(duration_seconds,60)}</stringProp>
+  </elementProp>
+  <elementProp name="ramp_up_seconds" elementType="Argument">
+    <stringProp name="Argument.value">${__P(ramp_up_seconds,10)}</stringProp>
+  </elementProp>
+</Arguments>
+```
 
-Use these placeholders in the JMX that Azure Load Testing will substitute:
-- `${BASE_URL}` - The application URL
-- `${CONCURRENT_USERS}` - Number of threads
-- `${DURATION}` - Test duration in seconds
+### Step 3: Generate Config File
+
+Create file: `loadtests/scenarios/{test-id}-config.yaml`
+
+```yaml
+version: v0.1
+testId: {test-id}
+testName: {Descriptive Name}
+testPlan: {test-id}.jmx
+engineInstances: 1
+
+failureCriteria:
+  - avg(response_time_ms) > 2000
+  - percentage(error) > 1
+  - p95(response_time_ms) > 3000
+
+env:
+  - name: webapp_url
+    value: ${WEBAPP_URL}
+  - name: concurrent_users
+    value: "${CONCURRENT_USERS}"
+  - name: duration_seconds  
+    value: "${DURATION_SECONDS}"
+  - name: ramp_up_seconds
+    value: "${RAMP_UP_SECONDS}"
+```
+
+### Step 4: Register in Manifest (CRITICAL!)
+
+**Read** `loadtests/manifest.yaml` first, then **append** the new test to the `tests:` section:
+
+```yaml
+  - id: {test-id}
+    name: "{Test Name}"
+    description: "{What this test does}"
+    jmeterFile: scenarios/{test-id}.jmx
+    configFile: scenarios/{test-id}-config.yaml
+    profiles:
+      - smoke  # Quick validation
+      - load   # Standard load
+    enabled: true
+    tags:
+      - {relevant-tags}
+```
+
+## 📝 JMeter Best Practices
+
+1. **Thread Group**: Use scheduler mode with duration from variable
+2. **Think Time**: Add 1-3 second random delays between requests
+3. **Assertions**: Check HTTP 200 responses
+4. **Transaction Controllers**: Group related requests
+5. **Cookie Manager**: Maintain session state
+6. **Random Data**: Use `${__Random()}` for dynamic IDs
+
+## ✅ Output Checklist
+
+Before completing, verify you created:
+- [ ] `loadtests/scenarios/{test-id}.jmx` - JMeter test plan
+- [ ] `loadtests/scenarios/{test-id}-config.yaml` - Azure config
+- [ ] Updated `loadtests/manifest.yaml` with new test entry
+
+## 🚀 After Generation
+
+Tell the user:
+1. **Run locally**: `cd loadtests && ./run-local.ps1 -TestId {test-id} -Profile smoke`
+2. **Commit & Push**: The pipeline will auto-discover the new test
+3. **Trigger manually**: Go to Actions → "Load Testing" → Run workflow → Select the test

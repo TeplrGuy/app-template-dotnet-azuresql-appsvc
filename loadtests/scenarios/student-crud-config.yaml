@@ -1,0 +1,23 @@
+# Student CRUD Operations Test Configuration
+# Auto-discovered by manifest.yaml
+
+version: v0.1
+testId: student-crud
+testName: Student CRUD Operations Test
+testPlan: student-crud.jmx
+engineInstances: 1
+
+failureCriteria:
+  - avg(response_time_ms) > 2000
+  - percentage(error) > 1
+  - p95(response_time_ms) > 3000
+
+env:
+  - name: webapp_url
+    value: ${WEBAPP_URL}
+  - name: concurrent_users
+    value: "${CONCURRENT_USERS}"
+  - name: duration_seconds  
+    value: "${DURATION_SECONDS}"
+  - name: ramp_up_seconds
+    value: "${RAMP_UP_SECONDS}"

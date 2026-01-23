@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Student CRUD Test Plan">
+      <stringProp name="TestPlan.comments">Generated test for student CRUD operations</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+    </TestPlan>
+    <hashTree>
+      <!-- User Defined Variables -->
+      <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="Test Variables">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="webapp_url" elementType="Argument">
+            <stringProp name="Argument.name">webapp_url</stringProp>
+            <stringProp name="Argument.value">${__P(webapp_url,localhost:5000)}</stringProp>
+          </elementProp>
+          <elementProp name="concurrent_users" elementType="Argument">
+            <stringProp name="Argument.name">concurrent_users</stringProp>
+            <stringProp name="Argument.value">${__P(concurrent_users,10)}</stringProp>
+          </elementProp>
+          <elementProp name="duration_seconds" elementType="Argument">
+            <stringProp name="Argument.name">duration_seconds</stringProp>
+            <stringProp name="Argument.value">${__P(duration_seconds,60)}</stringProp>
+          </elementProp>
+          <elementProp name="ramp_up_seconds" elementType="Argument">
+            <stringProp name="Argument.name">ramp_up_seconds</stringProp>
+            <stringProp name="Argument.value">${__P(ramp_up_seconds,10)}</stringProp>
+          </elementProp>
+        </collectionProp>
+      </Arguments>
+      <hashTree/>
+      
+      <!-- Thread Group -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Student CRUD Users">
+        <stringProp name="ThreadGroup.num_threads">${concurrent_users}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${ramp_up_seconds}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">${duration_seconds}</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+          <boolProp name="LoopController.continue_forever">true</boolProp>
+          <intProp name="LoopController.loops">-1</intProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <!-- HTTP Cookie Manager -->
+        <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="Cookie Manager">
+          <boolProp name="CookieManager.clearEachIteration">false</boolProp>
+        </CookieManager>
+        <hashTree/>
+        
+        <!-- HTTP Header Manager -->
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Headers">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="Accept" elementType="Header">
+              <stringProp name="Header.name">Accept</stringProp>
+              <stringProp name="Header.value">text/html,application/xhtml+xml</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        
+        <!-- Transaction: Browse Students -->
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Browse Students">
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+        </TransactionController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /Students">
+            <stringProp name="HTTPSampler.domain">${webapp_url}</stringProp>
+            <stringProp name="HTTPSampler.protocol">https</stringProp>
+            <stringProp name="HTTPSampler.path">/Students</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Check Success">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="49586">200</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <intProp name="Assertion.test_type">8</intProp>
+            </ResponseAssertion>
+            <hashTree/>
+          </hashTree>
+          
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time">
+            <stringProp name="ConstantTimer.delay">1000</stringProp>
+            <stringProp name="RandomTimer.range">2000</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+        
+        <!-- Transaction: View Student Details -->
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="View Student Details">
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+        </TransactionController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /Students/Details">
+            <stringProp name="HTTPSampler.domain">${webapp_url}</stringProp>
+            <stringProp name="HTTPSampler.protocol">https</stringProp>
+            <stringProp name="HTTPSampler.path">/Students/Details/${__Random(1,100)}</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+          </HTTPSamplerProxy>
+          <hashTree/>
+          
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time">
+            <stringProp name="ConstantTimer.delay">500</stringProp>
+            <stringProp name="RandomTimer.range">1500</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+        
+        <!-- Transaction: Create Student -->
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Create Student">
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+        </TransactionController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /Students/Create">
+            <stringProp name="HTTPSampler.domain">${webapp_url}</stringProp>
+            <stringProp name="HTTPSampler.protocol">https</stringProp>
+            <stringProp name="HTTPSampler.path">/Students/Create</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+          </HTTPSamplerProxy>
+          <hashTree/>
+          
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST /Students/Create">
+            <stringProp name="HTTPSampler.domain">${webapp_url}</stringProp>
+            <stringProp name="HTTPSampler.protocol">https</stringProp>
+            <stringProp name="HTTPSampler.path">/Students/Create</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="Student.FirstMidName" elementType="HTTPArgument">
+                  <stringProp name="Argument.name">Student.FirstMidName</stringProp>
+                  <stringProp name="Argument.value">LoadTest${__Random(1000,9999)}</stringProp>
+                </elementProp>
+                <elementProp name="Student.LastName" elementType="HTTPArgument">
+                  <stringProp name="Argument.name">Student.LastName</stringProp>
+                  <stringProp name="Argument.value">User${__threadNum}</stringProp>
+                </elementProp>
+                <elementProp name="Student.EnrollmentDate" elementType="HTTPArgument">
+                  <stringProp name="Argument.name">Student.EnrollmentDate</stringProp>
+                  <stringProp name="Argument.value">${__time(yyyy-MM-dd)}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Check Redirect or Success">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="51508">302</stringProp>
+                <stringProp name="48690">200</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <intProp name="Assertion.test_type">40</intProp>
+            </ResponseAssertion>
+            <hashTree/>
+          </hashTree>
+          
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time">
+            <stringProp name="ConstantTimer.delay">2000</stringProp>
+            <stringProp name="RandomTimer.range">3000</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+        
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

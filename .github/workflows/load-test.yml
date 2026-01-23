@@ -1,4 +1,15 @@
-name: Load Testing Pipeline
+name: 🧪 Load Testing (Auto-Discovery)
+
+# =============================================================================
+# AUTO-DISCOVERING LOAD TEST PIPELINE
+# =============================================================================
+# This workflow automatically discovers tests from loadtests/manifest.yaml
+# 
+# TO ADD A NEW TEST:
+# 1. Create your JMeter test in loadtests/scenarios/
+# 2. Add the test entry to loadtests/manifest.yaml
+# 3. Commit and push - no workflow changes needed!
+# =============================================================================
 
 on:
   pull_request:
@@ -26,6 +37,17 @@ on:
           - smoke
           - load
           - stress
+          - chaos
+      test_ids:
+        description: 'Test IDs (comma-separated) or "all"'
+        required: false
+        default: 'all'
+        type: string
+      chaos_experiment:
+        description: 'Chaos experiment to run alongside (optional)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   id-token: write
@@ -36,154 +58,203 @@ env:
   RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
 
 jobs:
-  # ============================================
-  # SMOKE TEST - Runs on every PR
-  # Quick validation, minimal load
-  # ============================================
-  smoke-test:
-    name: Smoke Test (Dev/PR)
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_profile == 'smoke')
+  # ===========================================================================
+  # DISCOVER TESTS FROM MANIFEST
+  # ===========================================================================
+  discover-tests:
+    name: 📋 Discover Tests
     runs-on: ubuntu-latest
-    environment: dev
+    outputs:
+      tests: ${{ steps.parse-manifest.outputs.tests }}
+      test_count: ${{ steps.parse-manifest.outputs.test_count }}
+      profile_users: ${{ steps.parse-manifest.outputs.users }}
+      profile_duration: ${{ steps.parse-manifest.outputs.duration }}
+      profile_rampup: ${{ steps.parse-manifest.outputs.rampup }}
     
     steps:
       - uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Run Smoke Load Test
-        uses: azure/load-testing@v1
-        with:
-          loadtestConfigFile: 'loadtests/config.yaml'
-          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
-          resourceGroup: ${{ env.RESOURCE_GROUP }}
-          env: |
-            [
-              { "name": "webapp_url", "value": "${{ vars.DEV_APP_URL }}" },
-              { "name": "concurrent_users", "value": "10" },
-              { "name": "duration_seconds", "value": "120" },
-              { "name": "ramp_up_seconds", "value": "30" }
-            ]
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: smoke-test-results
-          path: ${{ github.workspace }}/loadTest
-
-  # ============================================
-  # LOAD TEST - Runs on QA/Staging deployments
-  # Full SLA validation
-  # ============================================
-  load-test:
-    name: Load Test (QA/Staging)
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_profile == 'load')
-    runs-on: ubuntu-latest
-    environment: qa
-    
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Run Load Test
-        uses: azure/load-testing@v1
-        with:
-          loadtestConfigFile: 'loadtests/config.yaml'
-          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
-          resourceGroup: ${{ env.RESOURCE_GROUP }}
-          env: |
-            [
-              { "name": "webapp_url", "value": "${{ vars.QA_APP_URL }}" },
-              { "name": "concurrent_users", "value": "100" },
-              { "name": "duration_seconds", "value": "300" },
-              { "name": "ramp_up_seconds", "value": "60" }
-            ]
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: load-test-results
-          path: ${{ github.workspace }}/loadTest
-
-  # ============================================
-  # STRESS TEST - Manual trigger only
-  # Runs in dedicated performance environment
-  # ============================================
-  stress-test:
-    name: Stress Test (Perf Environment)
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_profile == 'stress'
-    runs-on: ubuntu-latest
-    environment: perf  # Requires manual approval
-    
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Run Stress Test
-        uses: azure/load-testing@v1
-        with:
-          loadtestConfigFile: 'loadtests/config.yaml'
-          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
-          resourceGroup: ${{ env.RESOURCE_GROUP }}
-          env: |
-            [
-              { "name": "webapp_url", "value": "${{ vars.PERF_APP_URL }}" },
-              { "name": "concurrent_users", "value": "500" },
-              { "name": "duration_seconds", "value": "600" },
-              { "name": "ramp_up_seconds", "value": "120" }
-            ]
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: stress-test-results
-          path: ${{ github.workspace }}/loadTest
-
-  # ============================================
-  # BASELINE COMPARISON
-  # Compare results against previous runs
-  # ============================================
-  compare-results:
-    name: Compare with Baseline
-    needs: [load-test]
-    if: always() && needs.load-test.result == 'success'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Download Current Results
-        uses: actions/download-artifact@v4
-        with:
-          name: load-test-results
-          path: ./current
-
-      - name: Analyze Results
+      
+      - name: 🔧 Install yq
         run: |
-          echo "📊 Load Test Results Summary"
-          echo "============================"
-          echo "Results available in Azure Load Testing portal"
-          echo ""
-          echo "Key Metrics to Review:"
-          echo "- Response time percentiles (p50, p90, p95, p99)"
-          echo "- Error rate percentage"
-          echo "- Throughput (requests/second)"
-          echo "- Server-side metrics (CPU, memory, DTU)"
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      
+      - name: 📋 Parse Test Manifest
+        id: parse-manifest
+        run: |
+          # Determine profile based on trigger
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            PROFILE="smoke"
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PROFILE="load"
+          else
+            PROFILE="${{ inputs.test_profile }}"
+          fi
+          
+          TEST_IDS="${{ inputs.test_ids || 'all' }}"
+          
+          echo "🔍 Discovering tests for profile: $PROFILE"
+          
+          # Get profile settings
+          USERS=$(yq eval ".profiles.$PROFILE.concurrentUsers // 10" loadtests/manifest.yaml)
+          DURATION=$(yq eval ".profiles.$PROFILE.durationSeconds // 60" loadtests/manifest.yaml)
+          RAMP_UP=$(yq eval ".profiles.$PROFILE.rampUpSeconds // 10" loadtests/manifest.yaml)
+          
+          echo "users=$USERS" >> $GITHUB_OUTPUT
+          echo "duration=$DURATION" >> $GITHUB_OUTPUT
+          echo "rampup=$RAMP_UP" >> $GITHUB_OUTPUT
+          
+          echo "📊 Profile Settings: $USERS users, ${DURATION}s duration"
+          
+          # Get tests
+          if [ "$TEST_IDS" == "all" ]; then
+            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "contoso-baseline")
+          else
+            TESTS="$TEST_IDS"
+          fi
+          
+          # Fallback if no tests found
+          if [ -z "$TESTS" ]; then
+            TESTS="contoso-baseline"
+          fi
+          
+          echo "🧪 Tests to run: $TESTS"
+          
+          # Build JSON array
+          TEST_ARRAY="["
+          FIRST=true
+          TEST_COUNT=0
+          
+          for TEST_ID in $(echo $TESTS | tr ',' ' '); do
+            [ -z "$TEST_ID" ] && continue
+            
+            if [ "$FIRST" = false ]; then TEST_ARRAY+=","; fi
+            FIRST=false
+            TEST_COUNT=$((TEST_COUNT + 1))
+            
+            NAME=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .name // \"$TEST_ID\"" loadtests/manifest.yaml)
+            JMETER=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .jmeterFile // \"contoso-load-test.jmx\"" loadtests/manifest.yaml)
+            
+            TEST_ARRAY+="{\"id\":\"$TEST_ID\",\"name\":\"$NAME\",\"jmeter\":\"$JMETER\"}"
+          done
+          
+          TEST_ARRAY+="]"
+          
+          echo "tests=$TEST_ARRAY" >> $GITHUB_OUTPUT
+          echo "test_count=$TEST_COUNT" >> $GITHUB_OUTPUT
+          
+          echo "📊 Discovered $TEST_COUNT test(s)"
+
+  # ===========================================================================
+  # RUN LOAD TESTS
+  # ===========================================================================
+  run-tests:
+    name: 🧪 ${{ matrix.test.name }}
+    needs: discover-tests
+    if: needs.discover-tests.outputs.test_count > 0
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJson(needs.discover-tests.outputs.tests) }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔐 Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: 🌐 Set Environment URL
+        id: env-url
+        run: |
+          ENV="${{ inputs.environment || 'dev' }}"
+          case "$ENV" in
+            dev)     URL="${{ vars.DEV_APP_URL }}" ;;
+            qa)      URL="${{ vars.QA_APP_URL }}" ;;
+            staging) URL="${{ vars.STAGING_APP_URL }}" ;;
+            perf)    URL="${{ vars.PERF_APP_URL }}" ;;
+            *)       URL="${{ vars.DEV_APP_URL }}" ;;
+          esac
+          [ -z "$URL" ] && URL="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+      
+      - name: 📝 Generate Dynamic Config
+        run: |
+          cat > loadtests/dynamic-config.yaml << EOF
+          version: v0.1
+          testId: ${{ matrix.test.id }}-${{ github.run_id }}
+          displayName: "${{ matrix.test.name }}"
+          testPlan: ${{ matrix.test.jmeter }}
+          engineInstances: 1
+          failureCriteria:
+            - avg(response_time_ms) > 2000
+            - percentage(error) > 1
+            - p95(response_time_ms) > 3000
+          env:
+            - name: webapp_url
+              value: "${{ steps.env-url.outputs.url }}"
+            - name: concurrent_users
+              value: "${{ needs.discover-tests.outputs.profile_users }}"
+            - name: duration_seconds
+              value: "${{ needs.discover-tests.outputs.profile_duration }}"
+            - name: ramp_up_seconds
+              value: "${{ needs.discover-tests.outputs.profile_rampup }}"
+          EOF
+          
+          cat loadtests/dynamic-config.yaml
+
+      - name: 🔥 Start Chaos Experiment
+        if: inputs.chaos_experiment != ''
+        id: chaos
+        run: |
+          echo "🔥 Starting chaos experiment: ${{ inputs.chaos_experiment }}"
+          sleep 60  # Wait for baseline
+          az chaos experiment start \
+            --name "${{ inputs.chaos_experiment }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --no-wait || true
+          echo "chaos_started=true" >> $GITHUB_OUTPUT
+
+      - name: 🧪 Run Azure Load Test
+        uses: azure/load-testing@v1
+        with:
+          loadtestConfigFile: 'loadtests/dynamic-config.yaml'
+          loadtestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+
+      - name: 🛑 Stop Chaos Experiment
+        if: always() && steps.chaos.outputs.chaos_started == 'true'
+        run: |
+          az chaos experiment cancel \
+            --name "${{ inputs.chaos_experiment }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" || true
+
+      - name: 📤 Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loadtest-${{ matrix.test.id }}
+          path: ${{ github.workspace }}/loadTest
+
+  # ===========================================================================
+  # SUMMARY
+  # ===========================================================================
+  summary:
+    name: 📊 Summary
+    needs: [discover-tests, run-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "# 📊 Load Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests Run:** ${{ needs.discover-tests.outputs.test_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Profile:** ${{ inputs.test_profile || 'auto' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View detailed results in the Azure Load Testing portal." >> $GITHUB_STEP_SUMMARY

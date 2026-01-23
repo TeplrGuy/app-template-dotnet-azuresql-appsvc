@@ -2,46 +2,111 @@
 
 This folder contains load testing configurations for the Contoso University application using Azure Load Testing.
 
-## 📁 Files
+## � Quick Start: Generate a New Test
 
-| File | Description |
-|------|-------------|
-| `contoso-load-test.jmx` | JMeter test plan with user scenarios |
-| `config.yaml` | Azure Load Testing configuration |
+Use GitHub Copilot to generate tests that automatically integrate with the CI/CD pipeline:
 
-## 🎯 Test Scenarios
+```
+@workspace /generate-load-test
 
-The load test simulates three types of users:
+Create a load test for the instructor management pages that simulates
+50 users browsing and 10 users creating new instructors
+```
 
-### 1. Browse Users (70% of traffic)
-- View home page
-- Browse student list
-- View course catalog
+Copilot will:
+1. ✅ Create the JMeter test file in `scenarios/`
+2. ✅ Create the Azure config file in `scenarios/`
+3. ✅ Register it in `manifest.yaml`
+4. ✅ The pipeline auto-discovers it on next run!
 
-### 2. Search Users (20% of traffic)
-- Search for students by name
-- Filter course listings
+## 📁 Project Structure
 
-### 3. Create Users (10% of traffic)
-- Access student creation form
-- Submit new student records
+```
+loadtests/
+├── manifest.yaml              # 🎯 Test registry - pipeline reads this!
+├── config.yaml                # Default Azure Load Testing config
+├── contoso-load-test.jmx      # Main baseline test
+├── run-local.ps1              # Windows local runner
+├── run-local.sh               # Linux/Mac local runner
+├── profiles/                  # Profile configurations
+│   ├── smoke.yaml            # 10 users, 2 min
+│   ├── load.yaml             # 100 users, 5 min
+│   └── stress.yaml           # 500 users, 10 min
+└── scenarios/                 # Individual test scenarios
+    ├── student-crud.jmx
+    ├── department-browse.jmx
+    └── chaos-resilience.jmx
+```
+
+## 📋 Adding a New Test (Manual)
+
+1. **Create JMeter test** in `scenarios/{test-id}.jmx`
+2. **Create config** in `scenarios/{test-id}-config.yaml`  
+3. **Register in manifest.yaml**:
+
+```yaml
+tests:
+  - id: my-new-test
+    name: "My New Test"
+    description: "What this test does"
+    jmeterFile: scenarios/my-new-test.jmx
+    configFile: scenarios/my-new-test-config.yaml
+    profiles: [smoke, load]
+    enabled: true
+    tags: [custom]
+```
+
+4. **Commit & Push** - The pipeline auto-discovers it!
+
+## 🎯 Test Profiles
+
+| Profile | Users | Duration | Use Case |
+|---------|-------|----------|----------|
+| `smoke` | 10 | 2 min | Quick validation on PRs |
+| `load` | 100 | 5 min | Pre-production gate |
+| `stress` | 500 | 10 min | Find breaking point |
+| `chaos` | 50 | 10 min | During chaos experiments |
 
 ## 📈 Pass/Fail Criteria
 
 | Metric | Threshold | Priority |
 |--------|-----------|----------|
-| Average Response Time | < 1000ms | Critical |
-| p95 Response Time | < 2000ms | Critical |
-| p99 Response Time | < 4000ms | Warning |
+| Average Response Time | < 2000ms | Critical |
+| p95 Response Time | < 3000ms | Critical |
+| p99 Response Time | < 5000ms | Warning |
 | Error Rate | < 1% | Critical |
 
-## 🚀 Running Locally
+## 🏃 Running Locally
 
 ### Prerequisites
 - [Apache JMeter 5.5+](https://jmeter.apache.org/download_jmeter.cgi)
 - Java 11 or higher
 
-### Run Test
+### Windows (PowerShell)
+```powershell
+# List available tests
+.\run-local.ps1 -List
+
+# Run a specific test
+.\run-local.ps1 -TestId student-crud -Profile smoke
+
+# Run against a custom URL
+.\run-local.ps1 -TestId contoso-baseline -Profile load -WebAppUrl "https://myapp.azurewebsites.net"
+```
+
+### Linux/Mac
+```bash
+# List available tests
+./run-local.sh --list
+
+# Run a specific test  
+./run-local.sh student-crud smoke
+
+# Run against a custom URL
+./run-local.sh contoso-baseline load https://myapp.azurewebsites.net
+```
+
+### Direct JMeter
 ```bash
 # Run in GUI mode (for development)
 jmeter -t contoso-load-test.jmx

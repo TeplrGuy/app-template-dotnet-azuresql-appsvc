@@ -1,0 +1,119 @@
+# =============================================================================
+# Load Test Manifest - Central Registry for All Load Tests
+# =============================================================================
+# This manifest is used by the CI/CD pipeline to auto-discover and run tests.
+# When you add a new test using the generate-load-test prompt, register it here.
+# =============================================================================
+
+version: "1.0"
+description: "Contoso University Load Testing Manifest"
+
+# Test profiles define the type of testing scenario
+profiles:
+  smoke:
+    description: "Quick validation tests with minimal load"
+    concurrent_users: 5
+    duration_seconds: 60
+    ramp_up_seconds: 10
+    
+  load:
+    description: "Standard load tests for performance validation"
+    concurrent_users: 50
+    duration_seconds: 300
+    ramp_up_seconds: 60
+    
+  stress:
+    description: "High-load tests to find breaking points"
+    concurrent_users: 200
+    duration_seconds: 600
+    ramp_up_seconds: 120
+    
+  chaos:
+    description: "Tests designed to run during chaos experiments"
+    concurrent_users: 30
+    duration_seconds: 900
+    ramp_up_seconds: 60
+
+# =============================================================================
+# Test Definitions - Add new tests here to have them auto-discovered
+# =============================================================================
+tests:
+  # Student CRUD Operations Test
+  - id: student-crud
+    name: "Student CRUD Operations"
+    description: "Tests student browse, view, and create operations"
+    jmx_file: scenarios/student-crud.jmx
+    config_file: scenarios/student-crud-config.yaml
+    profiles: [smoke, load, stress]
+    endpoints:
+      - /Students
+      - /Students/Details/{id}
+      - /Students/Create
+    tags: [crud, students, web-app]
+    
+  # Chaos Resilience Test (runs during chaos experiments)
+  - id: chaos-resilience
+    name: "Chaos Resilience Test"
+    description: "Validates application behavior during fault injection"
+    jmx_file: scenarios/chaos-resilience.jmx
+    config_file: scenarios/chaos-config.yaml
+    profiles: [chaos]
+    endpoints:
+      - /health
+      - /api/students
+    tags: [chaos, resilience, fault-tolerance]
+    
+  # Home Page Performance (uses existing config.yaml)
+  - id: home-page
+    name: "Home Page Performance"
+    description: "Tests home page load time and responsiveness"
+    jmx_file: contoso-load-test.jmx
+    config_file: config.yaml
+    profiles: [smoke, load]
+    endpoints:
+      - /
+    tags: [homepage, performance]
+
+# =============================================================================
+# Default failure criteria (can be overridden per test)
+# =============================================================================
+defaultCriteria:
+  avgResponseTimeMs: 2000
+  percentile95Ms: 5000
+  errorPercentage: 1
+
+# Custom criteria per test ID (optional overrides)
+customCriteria:
+  chaos-resilience:
+    avgResponseTimeMs: 4000  # Higher tolerance during chaos
+    percentile95Ms: 8000
+    errorPercentage: 5       # Allow some errors during fault injection
+
+# =============================================================================
+# Chaos Experiments - Linked to the chaos profile tests
+# =============================================================================
+chaosExperiments:
+  - id: cpu-pressure
+    name: "CPU Pressure Test"
+    description: "Induces CPU stress on application instances"
+    bicep_file: ../infra/chaos/experiments/cpu-pressure.bicep
+    linked_test: chaos-resilience
+    
+  - id: sql-latency
+    name: "SQL Latency Injection"
+    description: "Injects latency into database operations"
+    bicep_file: ../infra/chaos/experiments/sql-latency.bicep
+    linked_test: chaos-resilience
+
+# =============================================================================
+# Environment-specific URLs (referenced by workflow)
+# =============================================================================
+environments:
+  dev:
+    webapp_url_var: DEV_APP_URL
+  qa:
+    webapp_url_var: QA_APP_URL
+  staging:
+    webapp_url_var: STAGING_APP_URL
+  prod:
+    webapp_url_var: PROD_APP_URL
