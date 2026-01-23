@@ -463,6 +463,42 @@ jobs:
             echo "✅ Key Vault created with RBAC authorization"
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
+          
+          # Get Key Vault resource ID for RBAC assignments
+          KV_ID=$(az keyvault show -n "$KV_NAME" --query id -o tsv)
+          echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+
+      - name: 🔐 Grant Key Vault Admin Access to Pipeline
+        run: |
+          KV_NAME="kv-${{ env.ENVIRONMENT_NAME }}"
+          KV_ID="${{ steps.keyvault.outputs.kv_id }}"
+          
+          # Get the current service principal's object ID
+          CURRENT_USER=$(az ad signed-in-user show --query id -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$CURRENT_USER" ]; then
+            # Running as service principal, get the object ID from the client ID
+            CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}"
+            CURRENT_USER=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+          fi
+          
+          if [ -n "$CURRENT_USER" ]; then
+            echo "📝 Granting Key Vault Secrets Officer role to pipeline identity..."
+            # Key Vault Secrets Officer role - allows read/write secrets
+            OFFICER_ROLE="b86a8fe4-44ce-4948-aee5-eccb2c155cd7"
+            
+            az role assignment create \
+              --assignee-object-id "$CURRENT_USER" \
+              --assignee-principal-type ServicePrincipal \
+              --role "$OFFICER_ROLE" \
+              --scope "$KV_ID" 2>/dev/null || echo "  ℹ️ Role may already exist"
+            
+            echo "✅ Key Vault Secrets Officer role granted"
+            echo "⏳ Waiting for RBAC propagation..."
+            sleep 30
+          else
+            echo "⚠️ Could not determine pipeline identity - secret creation may fail"
+          fi
 
       - name: 🔐 Store SQL Connection String in Key Vault
         run: |
