@@ -566,40 +566,6 @@ jobs:
           WEB_PRINCIPAL=$(az webapp identity assign -g "$RG" -n "$WEB" --query principalId -o tsv)
           echo "✅ Web App managed identity: $WEB_PRINCIPAL"
 
-      - name: 🔐 Grant Key Vault Access to Main Apps
-        run: |
-          RG="${{ env.RESOURCE_GROUP }}"
-          KV_NAME="kv-${{ env.ENVIRONMENT_NAME }}"
-          
-          # Get Key Vault resource ID
-          KV_ID=$(az keyvault show -n "$KV_NAME" --query id -o tsv)
-          echo "🔑 Key Vault ID: $KV_ID"
-          
-          # Key Vault Secrets User role
-          ROLE_ID="4633458b-17de-408a-b874-0445c86b69e6"
-          
-          # API App - Must have access to read secrets
-          API="${{ env.API_NAME }}"
-          API_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$API" --query principalId -o tsv)
-          echo "📝 Granting Key Vault Secrets User to $API (Principal: $API_PRINCIPAL)..."
-          az role assignment create \
-            --assignee-object-id "$API_PRINCIPAL" \
-            --assignee-principal-type ServicePrincipal \
-            --role "$ROLE_ID" \
-            --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role may already exist"
-          echo "✅ Key Vault access granted to $API"
-          
-          # Web App (for future use)
-          WEB="${{ env.WEBAPP_NAME }}"
-          WEB_PRINCIPAL=$(az webapp identity show -g "$RG" -n "$WEB" --query principalId -o tsv)
-          echo "📝 Granting Key Vault Secrets User to $WEB (Principal: $WEB_PRINCIPAL)..."
-          az role assignment create \
-            --assignee-object-id "$WEB_PRINCIPAL" \
-            --assignee-principal-type ServicePrincipal \
-            --role "$ROLE_ID" \
-            --scope "$KV_ID" 2>&1 || echo "  ℹ️ Role may already exist"
-          echo "✅ Key Vault access granted to $WEB"
-
       - name: 🎰 Create Web App Slots (staging, qa)
         run: |
           RG="${{ env.RESOURCE_GROUP }}"
