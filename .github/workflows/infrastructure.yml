@@ -119,7 +119,8 @@ jobs:
     name: 🏗️ Deploy Infrastructure
     needs: validate
     runs-on: ubuntu-latest
-    if: inputs.deploy_infrastructure != false
+    # Run for push events, or for workflow_dispatch when deploy_infrastructure is not false
+    if: github.event_name == 'push' || github.event.inputs.deploy_infrastructure != 'false'
     outputs:
       sql_server_name: ${{ steps.deploy.outputs.sqlServerName }}
       sql_db_name: ${{ steps.deploy.outputs.sqlDatabaseName }}
@@ -250,7 +251,6 @@ jobs:
           steps.check-infra.outputs.has_main_bicep == 'true' &&
           steps.check-rg.outputs.needs_deploy != 'true' &&
           steps.check-resources.outputs.needs_deploy != 'true' &&
-          inputs.force_deploy != true &&
           github.event.inputs.force_deploy != 'true'
         run: |
           echo "## ⏭️ Infrastructure Deployment Skipped" >> $GITHUB_STEP_SUMMARY
@@ -266,8 +266,7 @@ jobs:
       - name: 🏗️ Deploy Bicep Template
         if: |
           steps.check-infra.outputs.has_main_bicep == 'true' && 
-          (inputs.force_deploy == true || 
-           github.event.inputs.force_deploy == 'true' || 
+          (github.event.inputs.force_deploy == 'true' || 
            steps.check-rg.outputs.needs_deploy == 'true' || 
            steps.check-resources.outputs.needs_deploy == 'true')
         id: deploy
@@ -310,7 +309,8 @@ jobs:
   configure-app:
     name: ⚙️ Configure App Settings
     needs: [validate, deploy-infra]
-    if: always() && needs.validate.result == 'success' && inputs.configure_app_settings != false
+    # Run for push events, or for workflow_dispatch when configure_app_settings is not false
+    if: always() && needs.validate.result == 'success' && (github.event_name == 'push' || github.event.inputs.configure_app_settings != 'false')
     runs-on: ubuntu-latest
     
     steps:
