@@ -59,6 +59,67 @@ var appInsightsName = 'appi-${environmentName}'
 var logAnalyticsName = 'log-${environmentName}'
 var loadTestingName = 'lt-${environmentName}'
 var sreAgentName = 'sre-${environmentName}'
+var vnetName = 'vnet-${environmentName}'
+var appSubnetName = 'snet-app'
+var privateEndpointSubnetName = 'snet-pe'
+
+// =============================================================================
+// Virtual Network for Private Connectivity
+// =============================================================================
+resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
+  name: vnetName
+  location: location
+  tags: tags
+  properties: {
+    addressSpace: {
+      addressPrefixes: ['10.0.0.0/16']
+    }
+    subnets: [
+      {
+        name: appSubnetName
+        properties: {
+          addressPrefix: '10.0.1.0/24'
+          delegations: [
+            {
+              name: 'Microsoft.Web.serverFarms'
+              properties: {
+                serviceName: 'Microsoft.Web/serverFarms'
+              }
+            }
+          ]
+        }
+      }
+      {
+        name: privateEndpointSubnetName
+        properties: {
+          addressPrefix: '10.0.2.0/24'
+          privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+    ]
+  }
+}
+
+// =============================================================================
+// Private DNS Zone for SQL Server
+// =============================================================================
+resource privateDnsZoneSql 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink${environment().suffixes.sqlServerHostname}'
+  location: 'global'
+  tags: tags
+}
+
+resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: privateDnsZoneSql
+  name: '${vnetName}-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: vnet.id
+    }
+  }
+}
 
 // =============================================================================
 // Log Analytics Workspace
@@ -198,11 +259,13 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    virtualNetworkSubnetId: '${vnet.id}/subnets/${appSubnetName}'
     siteConfig: {
       netFrameworkVersion: 'v6.0'
       alwaysOn: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
+      vnetRouteAllEnabled: true
       appSettings: [
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -275,27 +338,9 @@ resource sqlServerSqlAuth 'Microsoft.Sql/servers@2022-05-01-preview' = if (sqlAu
   properties: {
     version: '12.0'
     minimalTlsVersion: '1.2'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
     administratorLogin: sqlAdminUsername
     administratorLoginPassword: sqlAdminPassword
-  }
-
-  // Allow Azure services
-  resource firewallAzure 'firewallRules' = {
-    name: 'AllowAzureServices'
-    properties: {
-      startIpAddress: '0.0.0.0'
-      endIpAddress: '0.0.0.0'
-    }
-  }
-
-  // Allow all IPs (for development - restrict in production)
-  resource firewallAll 'firewallRules' = {
-    name: 'AllowAllForDev'
-    properties: {
-      startIpAddress: '0.0.0.1'
-      endIpAddress: '255.255.255.254'
-    }
   }
 }
 
@@ -307,7 +352,7 @@ resource sqlServerAadAuth 'Microsoft.Sql/servers@2022-05-01-preview' = if (sqlAu
   properties: {
     version: '12.0'
     minimalTlsVersion: '1.2'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
     administrators: {
       administratorType: 'ActiveDirectory'
       principalType: 'User'
@@ -317,23 +362,42 @@ resource sqlServerAadAuth 'Microsoft.Sql/servers@2022-05-01-preview' = if (sqlAu
       azureADOnlyAuthentication: true
     }
   }
+}
 
-  // Allow Azure services
-  resource firewallAzure 'firewallRules' = {
-    name: 'AllowAzureServices'
-    properties: {
-      startIpAddress: '0.0.0.0'
-      endIpAddress: '0.0.0.0'
+// Private Endpoint for SQL Server
+resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
+  name: 'pe-${sqlServerName}'
+  location: location
+  tags: tags
+  properties: {
+    subnet: {
+      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
     }
+    privateLinkServiceConnections: [
+      {
+        name: 'sqlConnection'
+        properties: {
+          privateLinkServiceId: sqlAuthMode == 'sql' ? sqlServerSqlAuth.id : sqlServerAadAuth.id
+          groupIds: ['sqlServer']
+        }
+      }
+    ]
   }
+}
 
-  // Allow all IPs (for development - restrict in production)
-  resource firewallAll 'firewallRules' = {
-    name: 'AllowAllForDev'
-    properties: {
-      startIpAddress: '0.0.0.1'
-      endIpAddress: '255.255.255.254'
-    }
+// DNS record for SQL Private Endpoint
+resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-05-01' = {
+  parent: sqlPrivateEndpoint
+  name: 'sqlDnsGroup'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'config1'
+        properties: {
+          privateDnsZoneId: privateDnsZoneSql.id
+        }
+      }
+    ]
   }
 }
 
