@@ -509,10 +509,14 @@ param sreAgentMode string = 'Review'
 @description('GitHub repository URL for SRE Agent code integration (e.g., https://github.com/owner/repo)')
 param githubRepoUrl string = ''
 
+// SRE Agent is only available in limited regions (swedencentral, eastus2, australiaeast)
+// Use eastus2 as default since it's closest to most US deployments
+var sreAgentLocation = 'eastus2'
+
 resource sreAgent 'Microsoft.App/agents@2025-05-01-preview' = if (enableSreAgent) {
   name: sreAgentName
-  location: location
-  tags: union(tags, { 'purpose': 'sre-automation' })
+  location: sreAgentLocation
+  tags: union(tags, { purpose: 'sre-automation', monitoredResources: location })
   identity: {
     type: 'SystemAssigned'
   }
