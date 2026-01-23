@@ -56,6 +56,11 @@ env:
   SQL_ADMIN_USERNAME: sqladmin
   SQL_APP_USER: appUser
   SQL_CONNECTION_STRING_KEY: AZURE-SQL-CONNECTION-STRING
+  
+  # SRE Agent Configuration
+  ENABLE_SRE_AGENT: ${{ vars.ENABLE_SRE_AGENT || 'true' }}
+  SRE_AGENT_MODE: ${{ vars.SRE_AGENT_MODE || 'Review' }}
+  GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
 
 jobs:
   # ===========================================================================
@@ -260,6 +265,16 @@ jobs:
             echo "✅ Load Testing exists"
           fi
           
+          # Check SRE Agent (only if enabled)
+          if [ "${{ env.ENABLE_SRE_AGENT }}" == "true" ]; then
+            if ! az resource show --resource-group "$RG" --resource-type "Microsoft.App/agents" --name "sre-${{ env.ENVIRONMENT_NAME }}" &>/dev/null 2>&1; then
+              MISSING="$MISSING SREAgent"
+              echo "⚠️ SRE Agent not found"
+            else
+              echo "✅ SRE Agent exists"
+            fi
+          fi
+          
           if [ -n "$MISSING" ]; then
             echo "needs_deploy=true" >> $GITHUB_OUTPUT
             echo "missing_resources=$MISSING" >> $GITHUB_OUTPUT
@@ -315,6 +330,9 @@ jobs:
             sqlAppUserPassword=${{ secrets.AZURE_SQL_APP_USER_PASSWORD }}
             sqlAppUser=${{ env.SQL_APP_USER }}
             sqlConnectionStringKey=${{ env.SQL_CONNECTION_STRING_KEY }}
+            enableSreAgent=${{ env.ENABLE_SRE_AGENT }}
+            sreAgentMode=${{ env.SRE_AGENT_MODE }}
+            githubRepoUrl=${{ env.GITHUB_REPO_URL }}
           failOnStdErr: false
 
       - name: 🏗️ Deploy Bicep Template (Azure AD Auth)
@@ -341,6 +359,9 @@ jobs:
             sqlAadAdminName=${{ secrets.AZURE_SQL_AAD_ADMIN_NAME }}
             sqlAadAdminObjectId=${{ secrets.AZURE_SQL_AAD_ADMIN_OBJECT_ID }}
             sqlConnectionStringKey=${{ env.SQL_CONNECTION_STRING_KEY }}
+            enableSreAgent=${{ env.ENABLE_SRE_AGENT }}
+            sreAgentMode=${{ env.SRE_AGENT_MODE }}
+            githubRepoUrl=${{ env.GITHUB_REPO_URL }}
           failOnStdErr: false
 
       - name: � Export Resource Names to GitHub Variables
