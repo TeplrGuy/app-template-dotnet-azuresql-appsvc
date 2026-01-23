@@ -2,7 +2,11 @@
 // Contoso University - Resource Definitions
 // =============================================================================
 // All Azure resources for the application
-// Uses Azure AD-only authentication for SQL Server (MCAPS policy compliance)
+// Includes Key Vault for secrets, SQL initialization, and proper app configuration
+// 
+// Supports two authentication modes:
+// - 'sql': SQL authentication with deployment script to create app user
+// - 'aad': Azure AD-only authentication (MCAPS compliant) with Managed Identity
 // =============================================================================
 
 param environmentName string
@@ -10,15 +14,34 @@ param location string
 param webServiceName string
 param apiServiceName string
 
-@description('Azure AD admin object ID for SQL Server')
-param sqlAadAdminObjectId string
+@description('SQL authentication mode: sql = SQL auth with app user, aad = Azure AD only')
+@allowed(['sql', 'aad'])
+param sqlAuthMode string = 'aad'
 
-@description('Azure AD admin principal name (email or service principal name)')
-param sqlAadAdminName string
+// SQL Authentication parameters (only used when sqlAuthMode = 'sql')
+@description('SQL Server admin username (only for SQL auth mode)')
+param sqlAdminUsername string = 'sqladmin'
 
-@description('Azure AD admin principal type')
-@allowed(['User', 'Group', 'Application'])
-param sqlAadAdminType string = 'User'
+@secure()
+@description('SQL Server admin password (only for SQL auth mode)')
+param sqlAdminPassword string = ''
+
+@secure()
+@description('SQL App user password (only for SQL auth mode)')
+param sqlAppUserPassword string = ''
+
+@description('SQL App username for application connections (only for SQL auth mode)')
+param sqlAppUser string = 'appUser'
+
+// Azure AD Authentication parameters (only used when sqlAuthMode = 'aad')
+@description('Azure AD SQL Admin display name (only for AAD auth mode)')
+param sqlAadAdminName string = ''
+
+@description('Azure AD SQL Admin Object ID (only for AAD auth mode)')
+param sqlAadAdminObjectId string = ''
+
+@description('Key name for SQL connection string in Key Vault')
+param sqlConnectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
 // Tags for all resources
 var tags = {
@@ -28,6 +51,7 @@ var tags = {
 }
 
 // Naming conventions
+var keyVaultName = 'kv-${environmentName}'
 var sqlServerName = 'sql-${environmentName}'
 var sqlDatabaseName = 'sqldb-${environmentName}'
 var appServicePlanName = 'plan-${environmentName}'
@@ -64,6 +88,26 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     IngestionMode: 'LogAnalytics'
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
+  }
+}
+
+// =============================================================================
+// Key Vault
+// =============================================================================
+resource keyVault 'Microsoft.KeyVault/vaults@2022-07-01' = {
+  name: keyVaultName
+  location: location
+  tags: tags
+  properties: {
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    tenantId: subscription().tenantId
+    enableRbacAuthorization: true
+    enabledForDeployment: false
+    enabledForDiskEncryption: false
+    enabledForTemplateDeployment: true
   }
 }
 
@@ -111,6 +155,10 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
         }
+        {
+          name: 'Api__Address'
+          value: 'https://${apiServiceName}.azurewebsites.net'
+        }
       ]
     }
   }
@@ -118,6 +166,16 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   // Staging slot for zero-downtime deployments
   resource stagingSlot 'slots' = {
     name: 'staging'
+    location: location
+    tags: tags
+    properties: {
+      serverFarmId: appServicePlan.id
+    }
+  }
+
+  // QA slot for testing
+  resource qaSlot 'slots' = {
+    name: 'qa'
     location: location
     tags: tags
     properties: {
@@ -153,15 +211,51 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
         }
+        {
+          name: 'AZURE_KEY_VAULT_ENDPOINT'
+          value: keyVault.properties.vaultUri
+        }
+        {
+          name: 'AZURE_SQL_CONNECTION_STRING_KEY'
+          value: sqlConnectionStringKey
+        }
       ]
     }
   }
 }
 
 // =============================================================================
-// SQL Server (Azure AD-only authentication for MCAPS compliance)
+// Key Vault Access for Apps (RBAC)
 // =============================================================================
-resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
+// Key Vault Secrets User role
+var keyVaultSecretsUserRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+
+resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, webApp.id, keyVaultSecretsUserRole)
+  scope: keyVault
+  properties: {
+    principalId: webApp.identity.principalId
+    roleDefinitionId: keyVaultSecretsUserRole
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource apiAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, apiApp.id, keyVaultSecretsUserRole)
+  scope: keyVault
+  properties: {
+    principalId: apiApp.identity.principalId
+    roleDefinitionId: keyVaultSecretsUserRole
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// =============================================================================
+// SQL Server (Different configuration based on auth mode)
+// =============================================================================
+
+// SQL Server with SQL Authentication (for environments that allow it)
+resource sqlServerSqlAuth 'Microsoft.Sql/servers@2022-05-01-preview' = if (sqlAuthMode == 'sql') {
   name: sqlServerName
   location: location
   tags: tags
@@ -169,10 +263,41 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
     version: '12.0'
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
-    // Azure AD-only authentication (required by MCAPS policy)
+    administratorLogin: sqlAdminUsername
+    administratorLoginPassword: sqlAdminPassword
+  }
+
+  // Allow Azure services
+  resource firewallAzure 'firewallRules' = {
+    name: 'AllowAzureServices'
+    properties: {
+      startIpAddress: '0.0.0.0'
+      endIpAddress: '0.0.0.0'
+    }
+  }
+
+  // Allow all IPs (for development - restrict in production)
+  resource firewallAll 'firewallRules' = {
+    name: 'AllowAllForDev'
+    properties: {
+      startIpAddress: '0.0.0.1'
+      endIpAddress: '255.255.255.254'
+    }
+  }
+}
+
+// SQL Server with Azure AD Only Authentication (MCAPS compliant)
+resource sqlServerAadAuth 'Microsoft.Sql/servers@2022-05-01-preview' = if (sqlAuthMode == 'aad') {
+  name: sqlServerName
+  location: location
+  tags: tags
+  properties: {
+    version: '12.0'
+    minimalTlsVersion: '1.2'
+    publicNetworkAccess: 'Enabled'
     administrators: {
       administratorType: 'ActiveDirectory'
-      principalType: sqlAadAdminType
+      principalType: 'User'
       login: sqlAadAdminName
       sid: sqlAadAdminObjectId
       tenantId: subscription().tenantId
@@ -188,13 +313,41 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
       endIpAddress: '0.0.0.0'
     }
   }
+
+  // Allow all IPs (for development - restrict in production)
+  resource firewallAll 'firewallRules' = {
+    name: 'AllowAllForDev'
+    properties: {
+      startIpAddress: '0.0.0.1'
+      endIpAddress: '255.255.255.254'
+    }
+  }
 }
 
+// Reference to the active SQL Server (whichever mode is used)
+// Using environment suffix for cloud compatibility
+var sqlServerFqdn = '${sqlServerName}${environment().suffixes.sqlServerHostname}'
+
 // =============================================================================
-// SQL Database
+// SQL Database (attached to whichever SQL Server was created)
 // =============================================================================
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2022-05-01-preview' = {
-  parent: sqlServer
+resource sqlDatabaseSqlAuth 'Microsoft.Sql/servers/databases@2022-05-01-preview' = if (sqlAuthMode == 'sql') {
+  parent: sqlServerSqlAuth
+  name: sqlDatabaseName
+  location: location
+  tags: tags
+  sku: {
+    name: 'S0'
+    tier: 'Standard'
+  }
+  properties: {
+    collation: 'SQL_Latin1_General_CP1_CI_AS'
+    maxSizeBytes: 2147483648 // 2GB
+  }
+}
+
+resource sqlDatabaseAadAuth 'Microsoft.Sql/servers/databases@2022-05-01-preview' = if (sqlAuthMode == 'aad') {
+  parent: sqlServerAadAuth
   name: sqlDatabaseName
   location: location
   tags: tags
@@ -209,6 +362,114 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2022-05-01-preview' = {
 }
 
 // =============================================================================
+// SQL Deployment Script - Create App User (Only for SQL Auth Mode)
+// =============================================================================
+resource sqlDeploymentScript 'Microsoft.Resources/deploymentScripts@2020-10-01' = if (sqlAuthMode == 'sql') {
+  name: '${sqlServerName}-init-script'
+  location: location
+  kind: 'AzureCLI'
+  properties: {
+    azCliVersion: '2.37.0'
+    retentionInterval: 'PT1H'
+    timeout: 'PT5M'
+    cleanupPreference: 'OnSuccess'
+    environmentVariables: [
+      {
+        name: 'APPUSERNAME'
+        value: sqlAppUser
+      }
+      {
+        name: 'APPUSERPASSWORD'
+        secureValue: sqlAppUserPassword
+      }
+      {
+        name: 'DBNAME'
+        value: sqlDatabaseName
+      }
+      {
+        name: 'DBSERVER'
+        value: sqlServerFqdn
+      }
+      {
+        name: 'SQLCMDPASSWORD'
+        secureValue: sqlAdminPassword
+      }
+      {
+        name: 'SQLADMIN'
+        value: sqlAdminUsername
+      }
+    ]
+    scriptContent: '''
+      wget https://github.com/microsoft/go-sqlcmd/releases/download/v0.8.1/sqlcmd-v0.8.1-linux-x64.tar.bz2
+      tar x -f sqlcmd-v0.8.1-linux-x64.tar.bz2 -C .
+
+      cat <<SCRIPT_END > ./initDb.sql
+      IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${APPUSERNAME}')
+      BEGIN
+        CREATE USER [${APPUSERNAME}] WITH PASSWORD = '${APPUSERPASSWORD}'
+      END
+      GO
+      ALTER ROLE db_datareader ADD MEMBER [${APPUSERNAME}]
+      GO
+      ALTER ROLE db_datawriter ADD MEMBER [${APPUSERNAME}]
+      GO
+      ALTER ROLE db_ddladmin ADD MEMBER [${APPUSERNAME}]
+      GO
+      SCRIPT_END
+
+      ./sqlcmd -S ${DBSERVER} -d ${DBNAME} -U ${SQLADMIN} -i ./initDb.sql
+    '''
+  }
+  dependsOn: [
+    sqlDatabaseSqlAuth
+  ]
+}
+
+// =============================================================================
+// Key Vault Secrets (conditional based on auth mode)
+// =============================================================================
+
+// Secrets for SQL Auth mode
+resource sqlAdminPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = if (sqlAuthMode == 'sql') {
+  parent: keyVault
+  name: 'sqlAdminPassword'
+  properties: {
+    value: sqlAdminPassword
+  }
+}
+
+resource appUserPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = if (sqlAuthMode == 'sql') {
+  parent: keyVault
+  name: 'appUserPassword'
+  properties: {
+    value: sqlAppUserPassword
+  }
+}
+
+// SQL Connection String - different format based on auth mode
+var sqlConnectionStringSql = 'Server=tcp:${sqlServerFqdn},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAppUser};Password=${sqlAppUserPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+var sqlConnectionStringAad = 'Server=tcp:${sqlServerFqdn},1433;Initial Catalog=${sqlDatabaseName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;'
+
+// For SQL auth, depends on deployment script; for AAD auth, depends on database
+resource sqlConnectionStringSecretSql 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = if (sqlAuthMode == 'sql') {
+  parent: keyVault
+  name: sqlConnectionStringKey
+  properties: {
+    value: sqlConnectionStringSql
+  }
+  dependsOn: [sqlDeploymentScript]
+}
+
+resource sqlConnectionStringSecretAad 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = if (sqlAuthMode == 'aad') {
+  parent: keyVault
+  name: sqlConnectionStringKey
+  properties: {
+    value: sqlConnectionStringAad
+  }
+  dependsOn: [sqlDatabaseAadAuth]
+}
+
+// =============================================================================
 // Azure Load Testing
 // =============================================================================
 resource loadTesting 'Microsoft.LoadTestService/loadTests@2022-12-01' = {
@@ -219,46 +480,18 @@ resource loadTesting 'Microsoft.LoadTestService/loadTests@2022-12-01' = {
 }
 
 // =============================================================================
-// Connection String Configuration (Azure AD authentication)
-// =============================================================================
-// Use Managed Identity authentication (AAD) for SQL connections
-// Apps must have their managed identity granted access to the SQL database
-var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;'
-
-// Configure Web App connection string
-resource webAppConnectionStrings 'Microsoft.Web/sites/config@2022-09-01' = {
-  parent: webApp
-  name: 'connectionstrings'
-  properties: {
-    ContosoUniversityAPIContext: {
-      value: sqlConnectionString
-      type: 'SQLAzure'
-    }
-  }
-}
-
-// Configure API App connection string
-resource apiAppConnectionStrings 'Microsoft.Web/sites/config@2022-09-01' = {
-  parent: apiApp
-  name: 'connectionstrings'
-  properties: {
-    ContosoUniversityAPIContext: {
-      value: sqlConnectionString
-      type: 'SQLAzure'
-    }
-  }
-}
-
-// =============================================================================
 // Outputs
 // =============================================================================
 output webAppName string = webApp.name
 output apiAppName string = apiApp.name
-output sqlServerName string = sqlServer.name
-output sqlDatabaseName string = sqlDatabase.name
+output sqlServerName string = sqlServerName
+output sqlDatabaseName string = sqlDatabaseName
+output keyVaultName string = keyVault.name
+output keyVaultEndpoint string = keyVault.properties.vaultUri
 output appInsightsName string = appInsights.name
 output loadTestingName string = loadTesting.name
 output webUri string = 'https://${webApp.properties.defaultHostName}'
 output apiUri string = 'https://${apiApp.properties.defaultHostName}'
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
-output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
+output sqlServerFqdn string = sqlServerFqdn
+output sqlAuthMode string = sqlAuthMode

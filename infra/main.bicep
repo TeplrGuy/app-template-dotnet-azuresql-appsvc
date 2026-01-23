@@ -2,13 +2,18 @@
 // Contoso University - Main Infrastructure Template
 // =============================================================================
 // This template deploys all required Azure resources:
+// - Key Vault (for secrets management)
 // - App Service Plan
 // - Web App (MVC frontend) with Managed Identity
-// - API App (Web API backend) with Managed Identity
-// - SQL Server with Database (Azure AD-only authentication)
+// - API App (Web API backend) with Managed Identity  
+// - SQL Server with Database (supports SQL auth or Azure AD-only)
 // - Application Insights
 // - Log Analytics Workspace
 // - Azure Load Testing resource
+// 
+// Authentication Modes:
+// - 'sql': SQL authentication with app user (deployment script creates user)
+// - 'aad': Azure AD-only authentication (MCAPS compliant)
 // =============================================================================
 
 targetScope = 'subscription'
@@ -27,15 +32,34 @@ param webServiceName string = '${environmentName}-app'
 @description('Name of the API application')
 param apiServiceName string = '${environmentName}-api'
 
-@description('Azure AD admin object ID for SQL Server')
-param sqlAadAdminObjectId string
+@description('SQL authentication mode: sql = SQL auth with app user, aad = Azure AD only')
+@allowed(['sql', 'aad'])
+param sqlAuthMode string = 'aad'
 
-@description('Azure AD admin principal name (email or service principal name)')
-param sqlAadAdminName string
+// SQL Authentication parameters (only used when sqlAuthMode = 'sql')
+@description('SQL Server admin username (only for SQL auth mode)')
+param sqlAdminUsername string = 'sqladmin'
 
-@description('Azure AD admin principal type')
-@allowed(['User', 'Group', 'Application'])
-param sqlAadAdminType string = 'User'
+@secure()
+@description('SQL Server admin password (only for SQL auth mode)')
+param sqlAdminPassword string = ''
+
+@secure()
+@description('SQL App user password (only for SQL auth mode)')
+param sqlAppUserPassword string = ''
+
+@description('SQL App username for application connections (only for SQL auth mode)')
+param sqlAppUser string = 'appUser'
+
+// Azure AD Authentication parameters (only used when sqlAuthMode = 'aad')
+@description('Azure AD SQL Admin display name (only for AAD auth mode)')
+param sqlAadAdminName string = ''
+
+@description('Azure AD SQL Admin Object ID (only for AAD auth mode)')
+param sqlAadAdminObjectId string = ''
+
+@description('Key name for SQL connection string in Key Vault')
+param sqlConnectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
 // Resource group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -56,19 +80,28 @@ module resources 'resources.bicep' = {
     location: location
     webServiceName: webServiceName
     apiServiceName: apiServiceName
-    sqlAadAdminObjectId: sqlAadAdminObjectId
+    sqlAuthMode: sqlAuthMode
+    sqlAdminUsername: sqlAdminUsername
+    sqlAdminPassword: sqlAdminPassword
+    sqlAppUserPassword: sqlAppUserPassword
+    sqlAppUser: sqlAppUser
     sqlAadAdminName: sqlAadAdminName
-    sqlAadAdminType: sqlAadAdminType
+    sqlAadAdminObjectId: sqlAadAdminObjectId
+    sqlConnectionStringKey: sqlConnectionStringKey
   }
 }
 
+// =============================================================================
 // Outputs
+// =============================================================================
 output AZURE_RESOURCE_GROUP string = rg.name
 output AZURE_WEBAPP_NAME string = resources.outputs.webAppName
 output AZURE_API_NAME string = resources.outputs.apiAppName
 output AZURE_SQL_SERVER string = resources.outputs.sqlServerName
 output AZURE_SQL_DATABASE string = resources.outputs.sqlDatabaseName
+output AZURE_KEY_VAULT_NAME string = resources.outputs.keyVaultName
+output AZURE_KEY_VAULT_ENDPOINT string = resources.outputs.keyVaultEndpoint
 output AZURE_APPINSIGHTS_NAME string = resources.outputs.appInsightsName
-output AZURE_LOAD_TESTING_NAME string = resources.outputs.loadTestingName
-output WEB_URI string = resources.outputs.webUri
-output API_URI string = resources.outputs.apiUri
+output AZURE_LOAD_TEST_RESOURCE string = resources.outputs.loadTestingName
+output AZURE_WEBAPP_URL string = resources.outputs.webUri
+output AZURE_API_URL string = resources.outputs.apiUri

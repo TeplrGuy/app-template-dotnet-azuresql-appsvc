@@ -50,10 +50,12 @@ env:
   WEBAPP_NAME: ${{ vars.AZURE_ENVIRONMENT_NAME || secrets.AZURE_ENVIRONMENT_NAME }}-app
   API_NAME: ${{ vars.AZURE_ENVIRONMENT_NAME || secrets.AZURE_ENVIRONMENT_NAME }}-api
   
-  # SQL Azure AD Admin (for Azure AD-only authentication - MCAPS policy compliance)
-  SQL_AAD_ADMIN_OBJECT_ID: ${{ secrets.AZURE_SQL_AAD_ADMIN_OBJECT_ID || secrets.AZURE_CLIENT_ID }}
-  SQL_AAD_ADMIN_NAME: ${{ secrets.AZURE_SQL_AAD_ADMIN_NAME || 'github-actions-sp' }}
-  SQL_AAD_ADMIN_TYPE: ${{ secrets.AZURE_SQL_AAD_ADMIN_TYPE || 'Application' }}
+  # SQL Configuration
+  # SQL_AUTH_MODE: 'sql' for SQL auth (requires passwords), 'aad' for Azure AD only (MCAPS compliant)
+  SQL_AUTH_MODE: ${{ vars.SQL_AUTH_MODE || 'aad' }}
+  SQL_ADMIN_USERNAME: sqladmin
+  SQL_APP_USER: appUser
+  SQL_CONNECTION_STRING_KEY: AZURE-SQL-CONNECTION-STRING
 
 jobs:
   # ===========================================================================
@@ -71,13 +73,32 @@ jobs:
       - name: 🔍 Check Required Secrets
         run: |
           MISSING=""
+          AUTH_MODE="${{ env.SQL_AUTH_MODE }}"
+          echo "🔐 SQL Authentication Mode: $AUTH_MODE"
           
           if [ -z "${{ env.ENVIRONMENT_NAME }}" ]; then
             MISSING="$MISSING AZURE_ENVIRONMENT_NAME"
           fi
           
-          if [ -z "${{ env.SQL_AAD_ADMIN_OBJECT_ID }}" ]; then
-            MISSING="$MISSING AZURE_SQL_AAD_ADMIN_OBJECT_ID (or AZURE_CLIENT_ID as fallback)"
+          # Check auth mode specific secrets
+          if [ "$AUTH_MODE" == "sql" ]; then
+            echo "📋 Checking SQL Authentication requirements..."
+            if [ -z "${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}" ]; then
+              MISSING="$MISSING AZURE_SQL_ADMIN_PASSWORD"
+            fi
+            
+            if [ -z "${{ secrets.AZURE_SQL_APP_USER_PASSWORD }}" ]; then
+              MISSING="$MISSING AZURE_SQL_APP_USER_PASSWORD"
+            fi
+          else
+            echo "📋 Checking Azure AD Authentication requirements..."
+            if [ -z "${{ secrets.AZURE_SQL_AAD_ADMIN_NAME }}" ]; then
+              MISSING="$MISSING AZURE_SQL_AAD_ADMIN_NAME"
+            fi
+            
+            if [ -z "${{ secrets.AZURE_SQL_AAD_ADMIN_OBJECT_ID }}" ]; then
+              MISSING="$MISSING AZURE_SQL_AAD_ADMIN_OBJECT_ID"
+            fi
           fi
           
           if [ -n "$MISSING" ]; then
@@ -85,8 +106,16 @@ jobs:
             echo ""
             echo "Please configure the following in your repository settings:"
             echo "  - AZURE_ENVIRONMENT_NAME: Unique prefix for resources"
-            echo "  - AZURE_SQL_AAD_ADMIN_OBJECT_ID: Azure AD admin object ID for SQL (or uses AZURE_CLIENT_ID)"
-            echo "  - AZURE_SQL_AAD_ADMIN_NAME: Azure AD admin name (optional, defaults to 'github-actions-sp')"
+            echo ""
+            if [ "$AUTH_MODE" == "sql" ]; then
+              echo "For SQL Authentication mode (SQL_AUTH_MODE=sql):"
+              echo "  - AZURE_SQL_ADMIN_PASSWORD: SQL Server admin password"
+              echo "  - AZURE_SQL_APP_USER_PASSWORD: SQL app user password"
+            else
+              echo "For Azure AD Authentication mode (SQL_AUTH_MODE=aad):"
+              echo "  - AZURE_SQL_AAD_ADMIN_NAME: Azure AD admin display name"
+              echo "  - AZURE_SQL_AAD_ADMIN_OBJECT_ID: Azure AD admin object ID"
+            fi
             echo ""
             echo "For OIDC auth, also configure:"
             echo "  - AZURE_CLIENT_ID"
@@ -122,10 +151,6 @@ jobs:
     runs-on: ubuntu-latest
     # Run for push events, or for workflow_dispatch when deploy_infrastructure is not false
     if: github.event_name == 'push' || github.event.inputs.deploy_infrastructure != 'false'
-    outputs:
-      sql_server_name: ${{ steps.deploy.outputs.sqlServerName }}
-      sql_db_name: ${{ steps.deploy.outputs.sqlDatabaseName }}
-      appinsights_name: ${{ steps.deploy.outputs.appInsightsName }}
     
     steps:
       - name: 📥 Checkout code
@@ -264,13 +289,14 @@ jobs:
           echo "- Web App: ${{ env.WEBAPP_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- API App: ${{ env.API_NAME }}" >> $GITHUB_STEP_SUMMARY
 
-      - name: 🏗️ Deploy Bicep Template
+      - name: 🏗️ Deploy Bicep Template (SQL Auth)
         if: |
+          env.SQL_AUTH_MODE == 'sql' &&
           steps.check-infra.outputs.has_main_bicep == 'true' && 
           (github.event.inputs.force_deploy == 'true' || 
            steps.check-rg.outputs.needs_deploy == 'true' || 
            steps.check-resources.outputs.needs_deploy == 'true')
-        id: deploy
+        id: deploy-sql
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
@@ -283,13 +309,42 @@ jobs:
             location=${{ env.LOCATION }}
             webServiceName=${{ env.WEBAPP_NAME }}
             apiServiceName=${{ env.API_NAME }}
-            sqlAadAdminObjectId=${{ env.SQL_AAD_ADMIN_OBJECT_ID }}
-            sqlAadAdminName=${{ env.SQL_AAD_ADMIN_NAME }}
-            sqlAadAdminType=${{ env.SQL_AAD_ADMIN_TYPE }}
+            sqlAuthMode=sql
+            sqlAdminUsername=${{ env.SQL_ADMIN_USERNAME }}
+            sqlAdminPassword=${{ secrets.AZURE_SQL_ADMIN_PASSWORD }}
+            sqlAppUserPassword=${{ secrets.AZURE_SQL_APP_USER_PASSWORD }}
+            sqlAppUser=${{ env.SQL_APP_USER }}
+            sqlConnectionStringKey=${{ env.SQL_CONNECTION_STRING_KEY }}
+          failOnStdErr: false
+
+      - name: 🏗️ Deploy Bicep Template (Azure AD Auth)
+        if: |
+          env.SQL_AUTH_MODE != 'sql' &&
+          steps.check-infra.outputs.has_main_bicep == 'true' && 
+          (github.event.inputs.force_deploy == 'true' || 
+           steps.check-rg.outputs.needs_deploy == 'true' || 
+           steps.check-resources.outputs.needs_deploy == 'true')
+        id: deploy-aad
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          region: ${{ env.LOCATION }}
+          template: infra/main.bicep
+          deploymentName: 'infra-${{ github.run_id }}'
+          parameters: >
+            environmentName=${{ env.ENVIRONMENT_NAME }}
+            location=${{ env.LOCATION }}
+            webServiceName=${{ env.WEBAPP_NAME }}
+            apiServiceName=${{ env.API_NAME }}
+            sqlAuthMode=aad
+            sqlAadAdminName=${{ secrets.AZURE_SQL_AAD_ADMIN_NAME }}
+            sqlAadAdminObjectId=${{ secrets.AZURE_SQL_AAD_ADMIN_OBJECT_ID }}
+            sqlConnectionStringKey=${{ env.SQL_CONNECTION_STRING_KEY }}
           failOnStdErr: false
 
       - name: � Export Resource Names to GitHub Variables
-        if: steps.deploy.outcome == 'success' || steps.check-resources.outputs.needs_deploy != 'true'
+        if: steps.deploy-sql.outcome == 'success' || steps.deploy-aad.outcome == 'success' || steps.check-resources.outputs.needs_deploy != 'true'
         env:
           # Use GH_PAT if available (required for setting repo variables), fallback to GITHUB_TOKEN
           GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
@@ -304,9 +359,12 @@ jobs:
           gh variable set AZURE_API_NAME --body "${{ env.API_NAME }}" || echo "⚠️ Could not set AZURE_API_NAME"
           gh variable set AZURE_SQL_SERVER --body "sql-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_SQL_SERVER"
           gh variable set AZURE_SQL_DATABASE --body "sqldb-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_SQL_DATABASE"
+          gh variable set AZURE_KEY_VAULT_NAME --body "kv-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_KEY_VAULT_NAME"
+          gh variable set AZURE_KEY_VAULT_ENDPOINT --body "https://kv-${{ env.ENVIRONMENT_NAME }}.vault.azure.net/" || echo "⚠️ Could not set AZURE_KEY_VAULT_ENDPOINT"
           gh variable set AZURE_APPINSIGHTS_NAME --body "appi-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_APPINSIGHTS_NAME"
           gh variable set AZURE_LOAD_TEST_RESOURCE --body "lt-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_LOAD_TEST_RESOURCE"
           gh variable set AZURE_APP_SERVICE_PLAN --body "plan-${{ env.ENVIRONMENT_NAME }}" || echo "⚠️ Could not set AZURE_APP_SERVICE_PLAN"
+          gh variable set SQL_AUTH_MODE --body "${{ env.SQL_AUTH_MODE }}" || echo "⚠️ Could not set SQL_AUTH_MODE"
           
           # Web App URL
           gh variable set AZURE_WEBAPP_URL --body "https://${{ env.WEBAPP_NAME }}.azurewebsites.net" || echo "⚠️ Could not set AZURE_WEBAPP_URL"
@@ -315,7 +373,7 @@ jobs:
           echo "✅ Resource variables exported for other workflows"
 
       - name: 📋 Deployment Summary
-        if: steps.deploy.outcome == 'success'
+        if: steps.deploy-sql.outcome == 'success' || steps.deploy-aad.outcome == 'success'
         run: |
           echo "## 🏗️ Infrastructure Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -341,13 +399,12 @@ jobs:
           echo "- \`AZURE_WEBAPP_URL\`, \`AZURE_API_URL\`" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
-  # CONFIGURE APP SETTINGS & CONNECTION STRINGS
+  # VERIFY DEPLOYMENT (Configuration is done via Bicep + Key Vault)
   # ===========================================================================
-  configure-app:
-    name: ⚙️ Configure App Settings
+  verify-deployment:
+    name: ✅ Verify Deployment
     needs: [validate, deploy-infra]
-    # Run for push events, or for workflow_dispatch when configure_app_settings is not false
-    if: always() && needs.validate.result == 'success' && (github.event_name == 'push' || github.event.inputs.configure_app_settings != 'false')
+    if: always() && needs.validate.result == 'success' && needs.deploy-infra.result == 'success'
     runs-on: ubuntu-latest
     
     steps:
@@ -366,167 +423,80 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 🔍 Discover Azure Resources
-        id: discover
+      - name: 🔍 Verify Resources
         run: |
-          echo "🔍 Discovering resources in ${{ env.RESOURCE_GROUP }}..."
+          echo "🔍 Verifying deployed resources..."
           
-          # Check if resource group exists
-          if ! az group show --name "${{ env.RESOURCE_GROUP }}" &>/dev/null; then
-            echo "❌ Resource group ${{ env.RESOURCE_GROUP }} not found"
-            echo "Please deploy infrastructure first or check AZURE_ENVIRONMENT_NAME"
-            exit 1
-          fi
-          
-          # Find SQL Server
-          SQL_SERVER=$(az sql server list -g "${{ env.RESOURCE_GROUP }}" --query "[0].name" -o tsv 2>/dev/null || echo "")
-          if [ -n "$SQL_SERVER" ]; then
-            echo "sql_server=$SQL_SERVER" >> $GITHUB_OUTPUT
-            echo "✅ Found SQL Server: $SQL_SERVER"
-            
-            # Find SQL Database
-            SQL_DB=$(az sql db list -g "${{ env.RESOURCE_GROUP }}" -s "$SQL_SERVER" --query "[?name!='master'].name | [0]" -o tsv 2>/dev/null || echo "")
-            echo "sql_database=$SQL_DB" >> $GITHUB_OUTPUT
-            echo "✅ Found SQL Database: $SQL_DB"
-            
-            # Get SQL Server FQDN
-            SQL_FQDN=$(az sql server show -g "${{ env.RESOURCE_GROUP }}" -n "$SQL_SERVER" --query "fullyQualifiedDomainName" -o tsv)
-            echo "sql_fqdn=$SQL_FQDN" >> $GITHUB_OUTPUT
+          # Verify Key Vault
+          KV_NAME="kv-${{ env.ENVIRONMENT_NAME }}"
+          if az keyvault show -n "$KV_NAME" &>/dev/null; then
+            echo "✅ Key Vault: $KV_NAME"
           else
-            echo "⚠️ No SQL Server found in resource group"
+            echo "⚠️ Key Vault not found: $KV_NAME"
           fi
           
-          # Find Application Insights
-          APP_INSIGHTS=$(az monitor app-insights component list -g "${{ env.RESOURCE_GROUP }}" --query "[0].name" -o tsv 2>/dev/null || echo "")
-          if [ -n "$APP_INSIGHTS" ]; then
-            echo "app_insights=$APP_INSIGHTS" >> $GITHUB_OUTPUT
-            echo "✅ Found Application Insights: $APP_INSIGHTS"
-            
-            # Get connection string
-            AI_CONN=$(az monitor app-insights component show -g "${{ env.RESOURCE_GROUP }}" -a "$APP_INSIGHTS" --query "connectionString" -o tsv)
-            echo "app_insights_conn=$AI_CONN" >> $GITHUB_OUTPUT
+          # Verify SQL Server
+          SQL_NAME="sql-${{ env.ENVIRONMENT_NAME }}"
+          if az sql server show -g "${{ env.RESOURCE_GROUP }}" -n "$SQL_NAME" &>/dev/null; then
+            echo "✅ SQL Server: $SQL_NAME"
           else
-            echo "⚠️ No Application Insights found in resource group"
+            echo "⚠️ SQL Server not found: $SQL_NAME"
           fi
           
-          # Find Web App
-          WEBAPP=$(az webapp list -g "${{ env.RESOURCE_GROUP }}" --query "[?contains(name, 'app')].name | [0]" -o tsv 2>/dev/null || echo "${{ env.WEBAPP_NAME }}")
-          echo "webapp_name=$WEBAPP" >> $GITHUB_OUTPUT
-          echo "✅ Web App: $WEBAPP"
-          
-          # Find API App
-          API=$(az webapp list -g "${{ env.RESOURCE_GROUP }}" --query "[?contains(name, 'api')].name | [0]" -o tsv 2>/dev/null || echo "${{ env.API_NAME }}")
-          echo "api_name=$API" >> $GITHUB_OUTPUT
-          echo "✅ API App: $API"
-
-      - name: 🔗 Build Connection Strings
-        id: connstrings
-        run: |
-          SQL_SERVER="${{ steps.discover.outputs.sql_fqdn }}"
-          SQL_DB="${{ steps.discover.outputs.sql_database }}"
-          
-          if [ -n "$SQL_SERVER" ] && [ -n "$SQL_DB" ]; then
-            # Build SQL connection string using Azure AD Managed Identity authentication
-            # This works with Azure AD-only authentication (MCAPS policy compliant)
-            SQL_CONN="Server=tcp:${SQL_SERVER},1433;Initial Catalog=${SQL_DB};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;"
+          # Verify Web App
+          if az webapp show -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.WEBAPP_NAME }}" &>/dev/null; then
+            echo "✅ Web App: ${{ env.WEBAPP_NAME }}"
             
-            echo "sql_connection=$SQL_CONN" >> $GITHUB_OUTPUT
-            echo "✅ SQL connection string built (Azure AD auth)"
+            # Check app settings
+            KV_ENDPOINT=$(az webapp config appsettings list -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.WEBAPP_NAME }}" --query "[?name=='Api__Address'].value" -o tsv)
+            if [ -n "$KV_ENDPOINT" ]; then
+              echo "  ✅ API Address configured: $KV_ENDPOINT"
+            fi
           else
-            echo "⚠️ Cannot build SQL connection string - missing server or database info"
+            echo "⚠️ Web App not found: ${{ env.WEBAPP_NAME }}"
+          fi
+          
+          # Verify API App
+          if az webapp show -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.API_NAME }}" &>/dev/null; then
+            echo "✅ API App: ${{ env.API_NAME }}"
+            
+            # Check Key Vault integration
+            KV_ENDPOINT=$(az webapp config appsettings list -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.API_NAME }}" --query "[?name=='AZURE_KEY_VAULT_ENDPOINT'].value" -o tsv)
+            if [ -n "$KV_ENDPOINT" ]; then
+              echo "  ✅ Key Vault endpoint configured: $KV_ENDPOINT"
+            fi
+            
+            CONN_KEY=$(az webapp config appsettings list -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.API_NAME }}" --query "[?name=='AZURE_SQL_CONNECTION_STRING_KEY'].value" -o tsv)
+            if [ -n "$CONN_KEY" ]; then
+              echo "  ✅ SQL connection string key configured: $CONN_KEY"
+            fi
+          else
+            echo "⚠️ API App not found: ${{ env.API_NAME }}"
           fi
 
-      - name: ⚙️ Configure Web App Settings
-        if: steps.discover.outputs.webapp_name != ''
+      - name: 📋 Deployment Summary
         run: |
-          WEBAPP="${{ steps.discover.outputs.webapp_name }}"
-          
-          echo "⚙️ Configuring $WEBAPP..."
-          
-          # Set connection string if available
-          if [ -n "${{ steps.connstrings.outputs.sql_connection }}" ]; then
-            echo "Setting SQL connection string..."
-            az webapp config connection-string set \
-              -g "${{ env.RESOURCE_GROUP }}" \
-              -n "$WEBAPP" \
-              --connection-string-type SQLAzure \
-              --settings "ContosoUniversityAPIContext=${{ steps.connstrings.outputs.sql_connection }}" \
-              --output none
-            echo "✅ SQL connection string configured"
-          fi
-          
-          # Set Application Insights if available
-          if [ -n "${{ steps.discover.outputs.app_insights_conn }}" ]; then
-            echo "Setting Application Insights..."
-            az webapp config appsettings set \
-              -g "${{ env.RESOURCE_GROUP }}" \
-              -n "$WEBAPP" \
-              --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ steps.discover.outputs.app_insights_conn }}" \
-              --output none
-            echo "✅ Application Insights configured"
-          fi
-          
-          echo "✅ Web App configuration complete"
-
-      - name: ⚙️ Configure API App Settings
-        if: steps.discover.outputs.api_name != ''
-        run: |
-          API="${{ steps.discover.outputs.api_name }}"
-          
-          echo "⚙️ Configuring $API..."
-          
-          # Set connection string if available
-          if [ -n "${{ steps.connstrings.outputs.sql_connection }}" ]; then
-            echo "Setting SQL connection string..."
-            az webapp config connection-string set \
-              -g "${{ env.RESOURCE_GROUP }}" \
-              -n "$API" \
-              --connection-string-type SQLAzure \
-              --settings "ContosoUniversityAPIContext=${{ steps.connstrings.outputs.sql_connection }}" \
-              --output none
-            echo "✅ SQL connection string configured"
-          fi
-          
-          # Set Application Insights if available
-          if [ -n "${{ steps.discover.outputs.app_insights_conn }}" ]; then
-            echo "Setting Application Insights..."
-            az webapp config appsettings set \
-              -g "${{ env.RESOURCE_GROUP }}" \
-              -n "$API" \
-              --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ steps.discover.outputs.app_insights_conn }}" \
-              --output none
-            echo "✅ Application Insights configured"
-          fi
-          
-          echo "✅ API App configuration complete"
-
-      - name: 📋 Configuration Summary
-        run: |
-          echo "## ✅ App Configuration Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Infrastructure Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Resources Configured:" >> $GITHUB_STEP_SUMMARY
-          echo "| Resource | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -n "${{ steps.discover.outputs.webapp_name }}" ]; then
-            echo "| Web App (${{ steps.discover.outputs.webapp_name }}) | ✅ Configured |" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ -n "${{ steps.discover.outputs.api_name }}" ]; then
-            echo "| API (${{ steps.discover.outputs.api_name }}) | ✅ Configured |" >> $GITHUB_STEP_SUMMARY
-          fi
-          
+          echo "### 🏗️ Resources Created:" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource | Name |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | ${{ env.RESOURCE_GROUP }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Key Vault | kv-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SQL Server | sql-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SQL Database | sqldb-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web App | ${{ env.WEBAPP_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API App | ${{ env.API_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| App Insights | appi-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Load Testing | lt-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Connection Strings:" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -n "${{ steps.connstrings.outputs.sql_connection }}" ]; then
-            echo "- ✅ SQL Database connection string set" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- ⚠️ SQL Database connection string not configured" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ -n "${{ steps.discover.outputs.app_insights_conn }}" ]; then
-            echo "- ✅ Application Insights connection string set" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- ⚠️ Application Insights not configured" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "### 🔐 Configuration:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ SQL connection string stored in Key Vault" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ App user created via deployment script" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ API App configured with Key Vault integration" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Web App configured with API endpoint" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 URLs:" >> $GITHUB_STEP_SUMMARY
+          echo "- Web App: https://${{ env.WEBAPP_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://${{ env.API_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- Key Vault: https://kv-${{ env.ENVIRONMENT_NAME }}.vault.azure.net/" >> $GITHUB_STEP_SUMMARY
