@@ -108,14 +108,14 @@ jobs:
           
           # Get tests
           if [ "$TEST_IDS" == "all" ]; then
-            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "contoso-baseline")
+            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "student-crud")
           else
             TESTS="$TEST_IDS"
           fi
           
           # Fallback if no tests found
           if [ -z "$TESTS" ]; then
-            TESTS="contoso-baseline"
+            TESTS="student-crud"
           fi
           
           echo "🧪 Tests to run: $TESTS"
@@ -133,7 +133,7 @@ jobs:
             TEST_COUNT=$((TEST_COUNT + 1))
             
             NAME=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .name // \"$TEST_ID\"" loadtests/manifest.yaml)
-            JMETER=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .jmeterFile // \"contoso-load-test.jmx\"" loadtests/manifest.yaml)
+            JMETER=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .jmeterFile // \"scenarios/student-crud.jmx\"" loadtests/manifest.yaml)
             
             TEST_ARRAY+="{\"id\":\"$TEST_ID\",\"name\":\"$NAME\",\"jmeter\":\"$JMETER\"}"
           done
@@ -184,11 +184,32 @@ jobs:
       
       - name: 📝 Generate Dynamic Config
         run: |
-          cat > loadtests/dynamic-config.yaml << EOF
+          # Ensure JMeter file path is correct (relative paths from loadtests folder)
+          JMETER_FILE="${{ matrix.test.jmeter }}"
+          TEST_ID="${{ matrix.test.id }}"
+          DISPLAY_NAME="${{ matrix.test.name }}"
+          WEBAPP_URL="${{ steps.env-url.outputs.url }}"
+          USERS="${{ needs.discover-tests.outputs.profile_users }}"
+          DURATION="${{ needs.discover-tests.outputs.profile_duration }}"
+          RAMPUP="${{ needs.discover-tests.outputs.profile_rampup }}"
+          RUN_ID="${{ github.run_id }}"
+          
+          # Check if JMeter file exists
+          if [ ! -f "loadtests/$JMETER_FILE" ]; then
+            echo "❌ JMeter file not found: loadtests/$JMETER_FILE"
+            ls -la loadtests/
+            ls -la loadtests/scenarios/ || true
+            exit 1
+          fi
+          
+          echo "✅ Found JMeter file: loadtests/$JMETER_FILE"
+          
+          # Generate config without leading spaces (critical for YAML parsing)
+          cat > loadtests/dynamic-config.yaml <<EOF
           version: v0.1
-          testId: ${{ matrix.test.id }}-${{ github.run_id }}
-          displayName: "${{ matrix.test.name }}"
-          testPlan: ${{ matrix.test.jmeter }}
+          testId: ${TEST_ID}-${RUN_ID}
+          displayName: "${DISPLAY_NAME}"
+          testPlan: ${JMETER_FILE}
           engineInstances: 1
           failureCriteria:
             - avg(response_time_ms) > 2000
@@ -196,15 +217,19 @@ jobs:
             - p95(response_time_ms) > 3000
           env:
             - name: webapp_url
-              value: "${{ steps.env-url.outputs.url }}"
+              value: "${WEBAPP_URL}"
             - name: concurrent_users
-              value: "${{ needs.discover-tests.outputs.profile_users }}"
+              value: "${USERS}"
             - name: duration_seconds
-              value: "${{ needs.discover-tests.outputs.profile_duration }}"
+              value: "${DURATION}"
             - name: ramp_up_seconds
-              value: "${{ needs.discover-tests.outputs.profile_rampup }}"
+              value: "${RAMPUP}"
           EOF
           
+          # Remove leading whitespace from each line (heredoc indentation fix)
+          sed -i 's/^          //' loadtests/dynamic-config.yaml
+          
+          echo "📄 Generated config:"
           cat loadtests/dynamic-config.yaml
 
       - name: 🔥 Start Chaos Experiment

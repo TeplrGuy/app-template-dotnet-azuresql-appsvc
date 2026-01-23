@@ -1,10 +1,8 @@
 # =============================================================================
-# Azure Load Testing Configuration
+# Azure Load Testing Configuration (Legacy - kept for reference)
 # =============================================================================
-# This configuration follows enterprise best practices:
-# - Failure criteria act as deployment gates
-# - Environment variables allow different thresholds per stage
-# - Auto-stop prevents runaway costs on failed tests
+# NOTE: This file is no longer used directly. Tests are now auto-discovered
+# from manifest.yaml. See the scenarios/ folder for individual test configs.
 # =============================================================================
 
 version: v0.1
@@ -12,7 +10,7 @@ testId: contoso-university-load-test
 displayName: Contoso University Load Test
 description: Load test for Contoso University - Tests key endpoints as deployment gate
 
-testPlan: contoso-load-test.jmx
+testPlan: scenarios/student-crud.jmx
 engineInstances: 1
 
 # =============================================================================

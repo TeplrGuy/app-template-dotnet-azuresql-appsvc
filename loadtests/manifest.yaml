@@ -12,27 +12,27 @@ description: "Contoso University Load Testing Manifest"
 profiles:
   smoke:
     description: "Quick validation tests with minimal load"
-    concurrent_users: 5
-    duration_seconds: 60
-    ramp_up_seconds: 10
+    concurrentUsers: 5
+    durationSeconds: 60
+    rampUpSeconds: 10
     
   load:
     description: "Standard load tests for performance validation"
-    concurrent_users: 50
-    duration_seconds: 300
-    ramp_up_seconds: 60
+    concurrentUsers: 50
+    durationSeconds: 300
+    rampUpSeconds: 60
     
   stress:
     description: "High-load tests to find breaking points"
-    concurrent_users: 200
-    duration_seconds: 600
-    ramp_up_seconds: 120
+    concurrentUsers: 200
+    durationSeconds: 600
+    rampUpSeconds: 120
     
   chaos:
     description: "Tests designed to run during chaos experiments"
-    concurrent_users: 30
-    duration_seconds: 900
-    ramp_up_seconds: 60
+    concurrentUsers: 30
+    durationSeconds: 900
+    rampUpSeconds: 60
 
 # =============================================================================
 # Test Definitions - Add new tests here to have them auto-discovered
@@ -42,8 +42,9 @@ tests:
   - id: student-crud
     name: "Student CRUD Operations"
     description: "Tests student browse, view, and create operations"
-    jmx_file: scenarios/student-crud.jmx
-    config_file: scenarios/student-crud-config.yaml
+    enabled: true
+    jmeterFile: scenarios/student-crud.jmx
+    configFile: scenarios/student-crud-config.yaml
     profiles: [smoke, load, stress]
     endpoints:
       - /Students
@@ -55,24 +56,14 @@ tests:
   - id: chaos-resilience
     name: "Chaos Resilience Test"
     description: "Validates application behavior during fault injection"
-    jmx_file: scenarios/chaos-resilience.jmx
-    config_file: scenarios/chaos-config.yaml
+    enabled: true
+    jmeterFile: scenarios/chaos-resilience.jmx
+    configFile: scenarios/chaos-config.yaml
     profiles: [chaos]
     endpoints:
       - /health
       - /api/students
     tags: [chaos, resilience, fault-tolerance]
-    
-  # Home Page Performance (uses existing config.yaml)
-  - id: home-page
-    name: "Home Page Performance"
-    description: "Tests home page load time and responsiveness"
-    jmx_file: contoso-load-test.jmx
-    config_file: config.yaml
-    profiles: [smoke, load]
-    endpoints:
-      - /
-    tags: [homepage, performance]
 
 # =============================================================================
 # Default failure criteria (can be overridden per test)
