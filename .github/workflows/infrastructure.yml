@@ -859,15 +859,19 @@ jobs:
           cat /tmp/create_users.sql
           echo ""
           
-          # Run the SQL script
+          # Run the SQL script using go-sqlcmd which supports token authentication
           echo "🚀 Executing SQL script against $SQL_SERVER.database.windows.net/$SQL_DB..."
           
-          # Use sqlcmd with AAD token authentication
-          /opt/mssql-tools18/bin/sqlcmd \
+          # Install go-sqlcmd (modern sqlcmd with proper token support)
+          curl -sL https://github.com/microsoft/go-sqlcmd/releases/latest/download/sqlcmd-linux-amd64.tar.bz2 | tar xj -C /tmp
+          chmod +x /tmp/sqlcmd
+          
+          # Use go-sqlcmd with access token
+          echo "Using go-sqlcmd with access token authentication..."
+          /tmp/sqlcmd \
             -S "$SQL_SERVER.database.windows.net" \
             -d "$SQL_DB" \
-            -G \
-            -C \
+            --authentication-method=ActiveDirectoryDefault \
             -i /tmp/create_users.sql \
             2>&1 || {
               echo "⚠️ sqlcmd returned an error - checking if this is expected..."
