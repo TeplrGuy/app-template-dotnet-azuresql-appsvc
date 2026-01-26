@@ -814,6 +814,7 @@ jobs:
                 "AZURE_SQL_CONNECTION_STRING_KEY=$CONN_KEY" \
                 "ApplicationInsightsAgent_EXTENSION_VERSION=~3" \
                 "APPLICATIONINSIGHTS_CONNECTION_STRING=$APPINSIGHTS_CONN" \
+                "WEBSITE_DNS_SERVER=168.63.129.16" \
               --output none
             
             echo "✅ App settings configured for $API/$SLOT"
@@ -837,6 +838,7 @@ jobs:
               --settings \
                 "AZURE_KEY_VAULT_ENDPOINT=$KV_ENDPOINT" \
                 "AZURE_SQL_CONNECTION_STRING_KEY=$CONN_KEY" \
+                "WEBSITE_DNS_SERVER=168.63.129.16" \
               --output none
             echo "✅ App settings configured for main $API"
           else
