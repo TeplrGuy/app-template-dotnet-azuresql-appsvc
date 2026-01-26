@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "13958073259659420464"
+      "templateHash": "9902349467682564845"
     }
   },
   "parameters": {
@@ -350,6 +350,10 @@
             {
               "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
               "value": "~3"
+            },
+            {
+              "name": "WEBSITE_DNS_SERVER",
+              "value": "168.63.129.16"
             }
           ]
         }
@@ -387,6 +391,10 @@
             {
               "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
               "value": "~3"
+            },
+            {
+              "name": "WEBSITE_DNS_SERVER",
+              "value": "168.63.129.16"
             }
           ]
         }
@@ -425,6 +433,10 @@
             {
               "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
               "value": "~3"
+            },
+            {
+              "name": "WEBSITE_DNS_SERVER",
+              "value": "168.63.129.16"
             }
           ]
         }

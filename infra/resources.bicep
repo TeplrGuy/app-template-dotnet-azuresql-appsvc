@@ -275,6 +275,10 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
         }
+        {
+          name: 'WEBSITE_DNS_SERVER'
+          value: '168.63.129.16'
+        }
       ]
     }
   }
@@ -308,6 +312,10 @@ resource apiStagingSlot 'Microsoft.Web/sites/slots@2022-09-01' = {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
         }
+        {
+          name: 'WEBSITE_DNS_SERVER'
+          value: '168.63.129.16'
+        }
       ]
     }
   }
@@ -340,6 +348,10 @@ resource apiQaSlot 'Microsoft.Web/sites/slots@2022-09-01' = {
         {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
+        }
+        {
+          name: 'WEBSITE_DNS_SERVER'
+          value: '168.63.129.16'
         }
       ]
     }
