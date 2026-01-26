@@ -70,11 +70,13 @@ namespace ContosoUniversity.API.Data
 
             for (int i = 1; i <= 10000; i++)
             {
+                // Use the actual Course ID from the saved courses array
+                var randomCourse = courses[random.Next(courses.Length)];
                 studentCourse.Add(
                     new StudentCourse
                     {
                         StudentID = i,
-                        CourseID = random.Next(courses.Length)
+                        CourseID = randomCourse.ID
                     });
             }
 
