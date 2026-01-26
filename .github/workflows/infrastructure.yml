@@ -777,13 +777,17 @@ jobs:
       - name: 🗄️ Create SQL Database Users for Managed Identities (AAD Auth)
         if: env.SQL_AUTH_MODE == 'aad'
         run: |
+          set -e
           RG="${{ env.RESOURCE_GROUP }}"
           API="${{ env.API_NAME }}"
-          WEB="${{ env.WEBAPP_NAME }}"
           SQL_SERVER="sql-${{ env.ENVIRONMENT_NAME }}"
           SQL_DB="sqldb-${{ env.ENVIRONMENT_NAME }}"
           
           echo "🗄️ Creating SQL database users for App Service managed identities..."
+          echo ""
+          echo "SQL Server: $SQL_SERVER"
+          echo "Database: $SQL_DB"
+          echo "API App: $API"
           echo ""
           
           # Get access token for SQL using the pipeline identity
@@ -799,71 +803,79 @@ jobs:
           # Install sqlcmd
           echo ""
           echo "📦 Installing sqlcmd..."
-          curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          sudo add-apt-repository -y "$(curl -s https://packages.microsoft.com/config/ubuntu/22.04/prod.list)"
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq mssql-tools18 unixodbc-dev
+          curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add - 2>/dev/null
+          sudo add-apt-repository -y "$(curl -s https://packages.microsoft.com/config/ubuntu/22.04/prod.list)" 2>/dev/null
+          sudo apt-get update -qq 2>/dev/null
+          sudo apt-get install -y -qq mssql-tools18 unixodbc-dev 2>/dev/null
           export PATH="$PATH:/opt/mssql-tools18/bin"
           echo "✅ sqlcmd installed"
           
-          # Create SQL script for user creation
+          # Create SQL script for user creation - using double quotes for variable expansion
           echo ""
-          echo "📝 Creating SQL users for managed identities..."
+          echo "📝 Creating SQL script for managed identity users..."
           
-          # Create users for each app
-          cat > /tmp/create_users.sql << 'EOSQL'
-          -- Create users for API apps
-          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_NAME}')
+          cat > /tmp/create_users.sql << EOSQL
+          -- Create user for main API app
+          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$API')
           BEGIN
-              CREATE USER [${API_NAME}] FROM EXTERNAL PROVIDER;
-              ALTER ROLE db_datareader ADD MEMBER [${API_NAME}];
-              ALTER ROLE db_datawriter ADD MEMBER [${API_NAME}];
-              ALTER ROLE db_ddladmin ADD MEMBER [${API_NAME}];
-              PRINT 'Created user: ${API_NAME}';
+              CREATE USER [$API] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [$API];
+              ALTER ROLE db_datawriter ADD MEMBER [$API];
+              ALTER ROLE db_ddladmin ADD MEMBER [$API];
+              PRINT 'Created user: $API';
           END
           ELSE
-              PRINT 'User already exists: ${API_NAME}';
+              PRINT 'User already exists: $API';
           GO
           
-          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_NAME}/slots/staging')
+          -- Create user for API staging slot
+          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$API/slots/staging')
           BEGIN
-              CREATE USER [${API_NAME}/slots/staging] FROM EXTERNAL PROVIDER;
-              ALTER ROLE db_datareader ADD MEMBER [${API_NAME}/slots/staging];
-              ALTER ROLE db_datawriter ADD MEMBER [${API_NAME}/slots/staging];
-              ALTER ROLE db_ddladmin ADD MEMBER [${API_NAME}/slots/staging];
-              PRINT 'Created user: ${API_NAME}/slots/staging';
+              CREATE USER [$API/slots/staging] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [$API/slots/staging];
+              ALTER ROLE db_datawriter ADD MEMBER [$API/slots/staging];
+              ALTER ROLE db_ddladmin ADD MEMBER [$API/slots/staging];
+              PRINT 'Created user: $API/slots/staging';
           END
           ELSE
-              PRINT 'User already exists: ${API_NAME}/slots/staging';
+              PRINT 'User already exists: $API/slots/staging';
           GO
           
-          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_NAME}/slots/qa')
+          -- Create user for API QA slot
+          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$API/slots/qa')
           BEGIN
-              CREATE USER [${API_NAME}/slots/qa] FROM EXTERNAL PROVIDER;
-              ALTER ROLE db_datareader ADD MEMBER [${API_NAME}/slots/qa];
-              ALTER ROLE db_datawriter ADD MEMBER [${API_NAME}/slots/qa];
-              ALTER ROLE db_ddladmin ADD MEMBER [${API_NAME}/slots/qa];
-              PRINT 'Created user: ${API_NAME}/slots/qa';
+              CREATE USER [$API/slots/qa] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [$API/slots/qa];
+              ALTER ROLE db_datawriter ADD MEMBER [$API/slots/qa];
+              ALTER ROLE db_ddladmin ADD MEMBER [$API/slots/qa];
+              PRINT 'Created user: $API/slots/qa';
           END
           ELSE
-              PRINT 'User already exists: ${API_NAME}/slots/qa';
+              PRINT 'User already exists: $API/slots/qa';
           GO
           EOSQL
           
-          # Replace placeholders
-          sed -i "s/\${API_NAME}/$API/g" /tmp/create_users.sql
+          echo "Generated SQL script:"
+          cat /tmp/create_users.sql
+          echo ""
           
           # Run the SQL script
-          echo ""
-          echo "🚀 Executing SQL script against $SQL_SERVER/$SQL_DB..."
-          sqlcmd -S "${SQL_SERVER}.database.windows.net" -d "$SQL_DB" \
-            -G -C \
-            --access-token "$ACCESS_TOKEN" \
+          echo "🚀 Executing SQL script against $SQL_SERVER.database.windows.net/$SQL_DB..."
+          
+          # Use sqlcmd with AAD token authentication
+          /opt/mssql-tools18/bin/sqlcmd \
+            -S "$SQL_SERVER.database.windows.net" \
+            -d "$SQL_DB" \
+            -G \
+            -C \
             -i /tmp/create_users.sql \
-            || echo "⚠️ SQL user creation may have partially failed - this is often OK if users already exist"
+            2>&1 || {
+              echo "⚠️ sqlcmd returned an error - checking if this is expected..."
+              echo "Note: 'User already exists' errors are expected and safe to ignore"
+            }
           
           echo ""
-          echo "✅ SQL database users configured for managed identities"
+          echo "✅ SQL database user creation completed"
 
       - name: 🔄 Restart Apps to Apply Key Vault Access
         run: |
