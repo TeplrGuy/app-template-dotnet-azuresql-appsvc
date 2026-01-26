@@ -313,6 +313,66 @@ resource apiStagingSlot 'Microsoft.Web/sites/slots@2022-09-01' = {
   }
 }
 
+// API App QA Slot - needs VNet integration and managed identity for Key Vault access
+resource apiQaSlot 'Microsoft.Web/sites/slots@2022-09-01' = {
+  parent: apiApp
+  name: 'qa'
+  location: location
+  tags: tags
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    virtualNetworkSubnetId: '${vnet.id}/subnets/${appSubnetName}'
+    siteConfig: {
+      netFrameworkVersion: 'v6.0'
+      alwaysOn: true
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      vnetRouteAllEnabled: true
+      appSettings: [
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+      ]
+    }
+  }
+}
+
+// Key Vault access for API QA Slot
+resource apiQaSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, apiQaSlot.id, keyVaultSecretsUserRole)
+  scope: keyVault
+  properties: {
+    principalId: apiQaSlot.identity.principalId
+    roleDefinitionId: keyVaultSecretsUserRole
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// API QA Slot Settings - configured after Key Vault access is ready
+resource apiQaSlotSettings 'Microsoft.Web/sites/slots/config@2022-09-01' = {
+  parent: apiQaSlot
+  name: 'appsettings'
+  properties: {
+    APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    ConnectionStrings__ContosoUniversityAPIContext: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${sqlConnectionStringKey})'
+  }
+  dependsOn: [
+    apiQaSlotKeyVaultAccess
+    sqlConnectionStringSecretSql
+    sqlConnectionStringSecretAad
+  ]
+}
+
 // Key Vault access for API Staging Slot
 resource apiStagingSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVault.id, apiStagingSlot.id, keyVaultSecretsUserRole)
