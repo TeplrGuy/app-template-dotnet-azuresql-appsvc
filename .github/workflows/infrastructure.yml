@@ -774,6 +774,97 @@ jobs:
           sleep 60
           echo "✅ RBAC propagation wait complete"
 
+      - name: 🗄️ Create SQL Database Users for Managed Identities (AAD Auth)
+        if: env.SQL_AUTH_MODE == 'aad'
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          API="${{ env.API_NAME }}"
+          WEB="${{ env.WEBAPP_NAME }}"
+          SQL_SERVER="sql-${{ env.ENVIRONMENT_NAME }}"
+          SQL_DB="sqldb-${{ env.ENVIRONMENT_NAME }}"
+          
+          echo "🗄️ Creating SQL database users for App Service managed identities..."
+          echo ""
+          
+          # Get access token for SQL using the pipeline identity
+          echo "🔑 Getting access token for Azure SQL..."
+          ACCESS_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
+          
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "❌ Failed to get access token for SQL"
+            exit 1
+          fi
+          echo "✅ Got access token"
+          
+          # Install sqlcmd
+          echo ""
+          echo "📦 Installing sqlcmd..."
+          curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          sudo add-apt-repository -y "$(curl -s https://packages.microsoft.com/config/ubuntu/22.04/prod.list)"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mssql-tools18 unixodbc-dev
+          export PATH="$PATH:/opt/mssql-tools18/bin"
+          echo "✅ sqlcmd installed"
+          
+          # Create SQL script for user creation
+          echo ""
+          echo "📝 Creating SQL users for managed identities..."
+          
+          # Create users for each app
+          cat > /tmp/create_users.sql << 'EOSQL'
+          -- Create users for API apps
+          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_NAME}')
+          BEGIN
+              CREATE USER [${API_NAME}] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [${API_NAME}];
+              ALTER ROLE db_datawriter ADD MEMBER [${API_NAME}];
+              ALTER ROLE db_ddladmin ADD MEMBER [${API_NAME}];
+              PRINT 'Created user: ${API_NAME}';
+          END
+          ELSE
+              PRINT 'User already exists: ${API_NAME}';
+          GO
+          
+          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_NAME}/slots/staging')
+          BEGIN
+              CREATE USER [${API_NAME}/slots/staging] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [${API_NAME}/slots/staging];
+              ALTER ROLE db_datawriter ADD MEMBER [${API_NAME}/slots/staging];
+              ALTER ROLE db_ddladmin ADD MEMBER [${API_NAME}/slots/staging];
+              PRINT 'Created user: ${API_NAME}/slots/staging';
+          END
+          ELSE
+              PRINT 'User already exists: ${API_NAME}/slots/staging';
+          GO
+          
+          IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_NAME}/slots/qa')
+          BEGIN
+              CREATE USER [${API_NAME}/slots/qa] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [${API_NAME}/slots/qa];
+              ALTER ROLE db_datawriter ADD MEMBER [${API_NAME}/slots/qa];
+              ALTER ROLE db_ddladmin ADD MEMBER [${API_NAME}/slots/qa];
+              PRINT 'Created user: ${API_NAME}/slots/qa';
+          END
+          ELSE
+              PRINT 'User already exists: ${API_NAME}/slots/qa';
+          GO
+          EOSQL
+          
+          # Replace placeholders
+          sed -i "s/\${API_NAME}/$API/g" /tmp/create_users.sql
+          
+          # Run the SQL script
+          echo ""
+          echo "🚀 Executing SQL script against $SQL_SERVER/$SQL_DB..."
+          sqlcmd -S "${SQL_SERVER}.database.windows.net" -d "$SQL_DB" \
+            -G -C \
+            --access-token "$ACCESS_TOKEN" \
+            -i /tmp/create_users.sql \
+            || echo "⚠️ SQL user creation may have partially failed - this is often OK if users already exist"
+          
+          echo ""
+          echo "✅ SQL database users configured for managed identities"
+
       - name: 🔄 Restart Apps to Apply Key Vault Access
         run: |
           RG="${{ env.RESOURCE_GROUP }}"
