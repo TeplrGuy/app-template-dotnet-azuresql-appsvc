@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "12571384011359897852"
+      "templateHash": "16662739830773413049"
     }
   },
   "parameters": {
@@ -97,6 +97,13 @@
         "description": "Key name for SQL connection string in Key Vault"
       }
     },
+    "deployRbacAssignments": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy Key Vault RBAC role assignments (requires User Access Administrator or Owner role)"
+      }
+    },
     "enableSreAgent": {
       "type": "bool",
       "defaultValue": true,
@@ -182,6 +189,9 @@
           "sqlConnectionStringKey": {
             "value": "[parameters('sqlConnectionStringKey')]"
           },
+          "deployRbacAssignments": {
+            "value": "[parameters('deployRbacAssignments')]"
+          },
           "enableSreAgent": {
             "value": "[parameters('enableSreAgent')]"
           },
@@ -199,7 +209,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "13958073259659420464"
+              "templateHash": "4394542624916526636"
             }
           },
           "parameters": {
@@ -273,6 +283,13 @@
               "defaultValue": "AZURE-SQL-CONNECTION-STRING",
               "metadata": {
                 "description": "Key name for SQL connection string in Key Vault"
+              }
+            },
+            "deployRbacAssignments": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Deploy Key Vault RBAC role assignments (requires User Access Administrator or Owner role)"
               }
             },
             "enableSreAgent": {
@@ -544,6 +561,10 @@
                     {
                       "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
                       "value": "~3"
+                    },
+                    {
+                      "name": "WEBSITE_DNS_SERVER",
+                      "value": "168.63.129.16"
                     }
                   ]
                 }
@@ -581,6 +602,10 @@
                     {
                       "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
                       "value": "~3"
+                    },
+                    {
+                      "name": "WEBSITE_DNS_SERVER",
+                      "value": "168.63.129.16"
                     }
                   ]
                 }
@@ -619,6 +644,10 @@
                     {
                       "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
                       "value": "~3"
+                    },
+                    {
+                      "name": "WEBSITE_DNS_SERVER",
+                      "value": "168.63.129.16"
                     }
                   ]
                 }
@@ -631,6 +660,7 @@
               ]
             },
             {
+              "condition": "[parameters('deployRbacAssignments')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('keyVaultName'))]",
@@ -656,7 +686,6 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites/slots', parameters('apiServiceName'), 'qa')]",
-                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites/slots', parameters('apiServiceName'), 'qa'), variables('keyVaultSecretsUserRole')))]",
                 "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), parameters('sqlConnectionStringKey'))]",
@@ -664,6 +693,7 @@
               ]
             },
             {
+              "condition": "[parameters('deployRbacAssignments')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('keyVaultName'))]",
@@ -689,7 +719,6 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites/slots', parameters('apiServiceName'), 'staging')]",
-                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites/slots', parameters('apiServiceName'), 'staging'), variables('keyVaultSecretsUserRole')))]",
                 "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), parameters('sqlConnectionStringKey'))]",
@@ -707,7 +736,6 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', parameters('apiServiceName'))]",
-                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', parameters('apiServiceName')), variables('keyVaultSecretsUserRole')))]",
                 "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
                 "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('keyVaultName'), parameters('sqlConnectionStringKey'))]",
@@ -715,6 +743,7 @@
               ]
             },
             {
+              "condition": "[parameters('deployRbacAssignments')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('keyVaultName'))]",
@@ -730,6 +759,7 @@
               ]
             },
             {
+              "condition": "[parameters('deployRbacAssignments')]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('keyVaultName'))]",

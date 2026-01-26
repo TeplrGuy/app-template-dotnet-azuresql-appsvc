@@ -43,6 +43,9 @@ param sqlAadAdminObjectId string = ''
 @description('Key name for SQL connection string in Key Vault')
 param sqlConnectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
+@description('Deploy Key Vault RBAC role assignments (requires User Access Administrator or Owner role)')
+param deployRbacAssignments bool = false
+
 // Tags for all resources
 var tags = {
   environment: environmentName
@@ -359,7 +362,7 @@ resource apiQaSlot 'Microsoft.Web/sites/slots@2022-09-01' = {
 }
 
 // Key Vault access for API QA Slot
-resource apiQaSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource apiQaSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployRbacAssignments) {
   name: guid(keyVault.id, apiQaSlot.id, keyVaultSecretsUserRole)
   scope: keyVault
   properties: {
@@ -379,14 +382,13 @@ resource apiQaSlotSettings 'Microsoft.Web/sites/slots/config@2022-09-01' = {
     ConnectionStrings__ContosoUniversityAPIContext: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${sqlConnectionStringKey})'
   }
   dependsOn: [
-    apiQaSlotKeyVaultAccess
     sqlConnectionStringSecretSql
     sqlConnectionStringSecretAad
   ]
 }
 
 // Key Vault access for API Staging Slot
-resource apiStagingSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource apiStagingSlotKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployRbacAssignments) {
   name: guid(keyVault.id, apiStagingSlot.id, keyVaultSecretsUserRole)
   scope: keyVault
   properties: {
@@ -406,7 +408,6 @@ resource apiStagingSlotSettings 'Microsoft.Web/sites/slots/config@2022-09-01' = 
     ConnectionStrings__ContosoUniversityAPIContext: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${sqlConnectionStringKey})'
   }
   dependsOn: [
-    apiStagingSlotKeyVaultAccess
     sqlConnectionStringSecretSql
     sqlConnectionStringSecretAad
   ]
@@ -421,7 +422,6 @@ resource apiAppSettings 'Microsoft.Web/sites/config@2022-09-01' = {
     ConnectionStrings__ContosoUniversityAPIContext: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${sqlConnectionStringKey})'
   }
   dependsOn: [
-    apiAppKeyVaultAccess
     sqlConnectionStringSecretSql
     sqlConnectionStringSecretAad
   ]
@@ -436,7 +436,7 @@ var keyVaultSecretsUserRole = subscriptionResourceId(
   '4633458b-17de-408a-b874-0445c86b69e6'
 )
 
-resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployRbacAssignments) {
   name: guid(keyVault.id, webApp.id, keyVaultSecretsUserRole)
   scope: keyVault
   properties: {
@@ -446,7 +446,7 @@ resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
-resource apiAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource apiAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployRbacAssignments) {
   name: guid(keyVault.id, apiApp.id, keyVaultSecretsUserRole)
   scope: keyVault
   properties: {

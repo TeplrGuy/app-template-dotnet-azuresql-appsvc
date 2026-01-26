@@ -61,6 +61,9 @@ param sqlAadAdminObjectId string = ''
 @description('Key name for SQL connection string in Key Vault')
 param sqlConnectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
+@description('Deploy Key Vault RBAC role assignments (requires User Access Administrator or Owner role)')
+param deployRbacAssignments bool = false
+
 // Azure SRE Agent parameters
 @description('Enable Azure SRE Agent for automated incident response')
 param enableSreAgent bool = true
@@ -99,6 +102,7 @@ module resources 'resources.bicep' = {
     sqlAadAdminName: sqlAadAdminName
     sqlAadAdminObjectId: sqlAadAdminObjectId
     sqlConnectionStringKey: sqlConnectionStringKey
+    deployRbacAssignments: deployRbacAssignments
     enableSreAgent: enableSreAgent
     sreAgentMode: sreAgentMode
     githubRepoUrl: githubRepoUrl
