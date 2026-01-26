@@ -65,6 +65,7 @@ var sreAgentName = 'sre-${environmentName}'
 var vnetName = 'vnet-${environmentName}'
 var appSubnetName = 'snet-app'
 var privateEndpointSubnetName = 'snet-pe'
+var containerInstanceSubnetName = 'snet-ci'
 
 // =============================================================================
 // Virtual Network for Private Connectivity
@@ -97,6 +98,20 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
         properties: {
           addressPrefix: '10.0.2.0/24'
           privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+      {
+        name: containerInstanceSubnetName
+        properties: {
+          addressPrefix: '10.0.3.0/24'
+          delegations: [
+            {
+              name: 'Microsoft.ContainerInstance.containerGroups'
+              properties: {
+                serviceName: 'Microsoft.ContainerInstance/containerGroups'
+              }
+            }
+          ]
         }
       }
     ]
@@ -629,6 +644,130 @@ resource sqlDeploymentScript 'Microsoft.Resources/deploymentScripts@2020-10-01' 
   }
   dependsOn: [
     sqlDatabaseSqlAuth
+  ]
+}
+
+// =============================================================================
+// SQL Deployment Script - Create Users from Managed Identities (AAD Auth Mode)
+// =============================================================================
+// This deployment script runs inside Azure with VNet access to create database
+// users for the App Service managed identities. 
+// Note: The script uses the AAD admin identity passed from workflow secrets.
+
+resource sqlAadDeploymentScriptIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (sqlAuthMode == 'aad') {
+  name: 'id-${sqlServerName}-deploy'
+  location: location
+  tags: tags
+}
+
+// Grant the deployment script identity SQL DB Contributor role on the resource group
+resource sqlDeployScriptRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (sqlAuthMode == 'aad') {
+  name: guid(resourceGroup().id, sqlAadDeploymentScriptIdentity.id, 'Storage-File-Data-Contrib')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '69566ab7-960f-475b-8e7c-b3118f30c6bd') // Storage File Data Privileged Contributor
+    principalId: sqlAadDeploymentScriptIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource sqlAadDeploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (sqlAuthMode == 'aad') {
+  name: '${sqlServerName}-aad-init-script'
+  location: location
+  kind: 'AzureCLI'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${sqlAadDeploymentScriptIdentity.id}': {}
+    }
+  }
+  properties: {
+    azCliVersion: '2.52.0'
+    retentionInterval: 'PT1H'
+    timeout: 'PT10M'
+    cleanupPreference: 'OnSuccess'
+    containerSettings: {
+      subnetIds: [
+        {
+          id: '${vnet.id}/subnets/${containerInstanceSubnetName}'
+        }
+      ]
+    }
+    environmentVariables: [
+      {
+        name: 'DBSERVER'
+        value: sqlServerFqdn
+      }
+      {
+        name: 'DBNAME'
+        value: sqlDatabaseName
+      }
+      {
+        name: 'API_APP_NAME'
+        value: apiServiceName
+      }
+    ]
+    scriptContent: '''
+      #!/bin/bash
+      set -e
+      
+      echo "Installing go-sqlcmd..."
+      wget -q https://github.com/microsoft/go-sqlcmd/releases/download/v1.4.0/sqlcmd-linux-amd64.tar.bz2
+      tar xf sqlcmd-linux-amd64.tar.bz2
+      chmod +x sqlcmd
+      
+      echo "Creating SQL script to add managed identity users..."
+      cat > ./create_users.sql << SQLSCRIPT
+      -- Create user for main API app
+      IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_APP_NAME}')
+      BEGIN
+          CREATE USER [${API_APP_NAME}] FROM EXTERNAL PROVIDER;
+          ALTER ROLE db_datareader ADD MEMBER [${API_APP_NAME}];
+          ALTER ROLE db_datawriter ADD MEMBER [${API_APP_NAME}];
+          ALTER ROLE db_ddladmin ADD MEMBER [${API_APP_NAME}];
+          PRINT 'Created user: ${API_APP_NAME}';
+      END
+      ELSE
+          PRINT 'User already exists: ${API_APP_NAME}';
+      GO
+      
+      -- Create user for API staging slot
+      IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_APP_NAME}/slots/staging')
+      BEGIN
+          CREATE USER [${API_APP_NAME}/slots/staging] FROM EXTERNAL PROVIDER;
+          ALTER ROLE db_datareader ADD MEMBER [${API_APP_NAME}/slots/staging];
+          ALTER ROLE db_datawriter ADD MEMBER [${API_APP_NAME}/slots/staging];
+          ALTER ROLE db_ddladmin ADD MEMBER [${API_APP_NAME}/slots/staging];
+          PRINT 'Created user: ${API_APP_NAME}/slots/staging';
+      END
+      ELSE
+          PRINT 'User already exists: ${API_APP_NAME}/slots/staging';
+      GO
+      
+      -- Create user for API QA slot  
+      IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${API_APP_NAME}/slots/qa')
+      BEGIN
+          CREATE USER [${API_APP_NAME}/slots/qa] FROM EXTERNAL PROVIDER;
+          ALTER ROLE db_datareader ADD MEMBER [${API_APP_NAME}/slots/qa];
+          ALTER ROLE db_datawriter ADD MEMBER [${API_APP_NAME}/slots/qa];
+          ALTER ROLE db_ddladmin ADD MEMBER [${API_APP_NAME}/slots/qa];
+          PRINT 'Created user: ${API_APP_NAME}/slots/qa';
+      END
+      ELSE
+          PRINT 'User already exists: ${API_APP_NAME}/slots/qa';
+      GO
+      SQLSCRIPT
+      
+      echo "Connecting to $DBSERVER/$DBNAME using Azure AD authentication..."
+      ./sqlcmd -S $DBSERVER -d $DBNAME --authentication-method=ActiveDirectoryDefault -i ./create_users.sql
+      
+      echo "SQL user creation completed successfully!"
+    '''
+  }
+  dependsOn: [
+    sqlDatabaseAadAuth
+    apiApp
+    apiStagingSlot
+    apiQaSlot
   ]
 }
 
