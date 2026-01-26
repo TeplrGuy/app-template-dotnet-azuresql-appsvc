@@ -265,6 +265,30 @@ jobs:
             echo "✅ Load Testing exists"
           fi
           
+          # Check VNet (required for private SQL connectivity)
+          if ! az network vnet show -g "$RG" -n "vnet-${{ env.ENVIRONMENT_NAME }}" &>/dev/null 2>&1; then
+            MISSING="$MISSING VNet"
+            echo "⚠️ VNet not found"
+          else
+            echo "✅ VNet exists"
+          fi
+          
+          # Check SQL Private Endpoint (required for private SQL connectivity)
+          if ! az network private-endpoint show -g "$RG" -n "pe-sql-${{ env.ENVIRONMENT_NAME }}" &>/dev/null 2>&1; then
+            MISSING="$MISSING SQLPrivateEndpoint"
+            echo "⚠️ SQL Private Endpoint not found"
+          else
+            echo "✅ SQL Private Endpoint exists"
+          fi
+          
+          # Check Private DNS Zone for SQL
+          if ! az network private-dns zone show -g "$RG" -n "privatelink.database.windows.net" &>/dev/null 2>&1; then
+            MISSING="$MISSING PrivateDNSZone"
+            echo "⚠️ Private DNS Zone not found"
+          else
+            echo "✅ Private DNS Zone exists"
+          fi
+          
           # Check SRE Agent (only if enabled)
           if [ "${{ env.ENABLE_SRE_AGENT }}" == "true" ]; then
             if ! az resource show --resource-group "$RG" --resource-type "Microsoft.App/agents" --name "sre-${{ env.ENVIRONMENT_NAME }}" &>/dev/null 2>&1; then
