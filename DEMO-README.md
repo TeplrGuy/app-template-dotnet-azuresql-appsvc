@@ -23,12 +23,16 @@ contoso-resilience-demo/
 ├── 📂 .github/
 │   ├── 📂 workflows/           # CI/CD pipelines
 │   │   └── build-test-deploy.yml
-│   ├── 📂 skills/              # GitHub Copilot skills
-│   │   ├── chaos-engineering.md
-│   │   ├── load-testing-expert.md
-│   │   ├── remediation-expert.md
-│   │   └── sre-advisor.md
-│   ├── 📂 prompts/             # Reusable Copilot prompts
+│   ├── 📂 skills/              # GitHub Copilot skills (Agent Skills spec)
+│   │   ├── 📂 chaos-engineering/
+│   │   │   └── SKILL.md        # Fault injection & resilience testing
+│   │   ├── 📂 load-testing-expert/
+│   │   │   └── SKILL.md        # JMeter & Azure Load Testing (uses MCP)
+│   │   ├── 📂 remediation-expert/
+│   │   │   └── SKILL.md        # Error analysis & fixes
+│   │   └── 📂 sre-advisor/
+│   │       └── SKILL.md        # SLOs, alerts & incident response
+│   ├── 📂 prompts/             # Task templates with structured I/O
 │   │   ├── generate-load-test.prompt.md
 │   │   ├── design-chaos-experiment.prompt.md
 │   │   └── analyze-and-fix-error.prompt.md
@@ -140,24 +144,47 @@ See [infra/chaos/README.md](infra/chaos/README.md) for detailed instructions.
 
 ## 🤖 GitHub Copilot Integration
 
-### Skills
+This repo follows the [Agent Skills specification](https://agentskills.io/specification) for AI-powered workflows.
 
-Use these with `@workspace` in Copilot Chat:
+### Skills vs Prompts
 
-| Skill | Use For |
-|-------|---------|
-| **Chaos Engineering Expert** | Design failure scenarios |
-| **Load Testing Expert** | Generate JMeter tests |
-| **SRE Advisor** | SLO/SLI guidance |
-| **Remediation Expert** | Fix errors from logs |
+| Type | Purpose | When to Use | How to Invoke |
+|------|---------|-------------|---------------|
+| **Skills** | Reusable knowledge that Copilot auto-activates | Ongoing conversations about a topic | Auto-discovered by Copilot based on context |
+| **Prompts** | Specific task templates with structured outputs | One-shot tasks with clear deliverables | `/prompt-name` or prompt picker |
 
-### Prompts
+### Skills (Auto-Activated Knowledge)
 
-Reusable prompts in `.github/prompts/`:
+Skills in `.github/skills/` follow the Agent Skills spec (directory + `SKILL.md`):
 
-1. **Generate Load Test** - Create JMeter test plans
-2. **Design Chaos Experiment** - Create Chaos Studio experiments
-3. **Analyze and Fix Error** - Debug issues from logs
+| Skill | Description | Triggers On |
+|-------|-------------|-------------|
+| `chaos-engineering` | Designs fault injection experiments for Azure Chaos Studio | "chaos", "resilience", "fault injection", "FMEA" |
+| `load-testing-expert` | Creates JMeter tests, uses Azure Load Testing MCP tools | "load test", "performance", "JMeter", "stress test" |
+| `remediation-expert` | Analyzes errors and generates fixes with tests | "error", "fix", "retry", "circuit breaker" |
+| `sre-advisor` | SLO/SLI guidance, Azure Monitor alerts, runbooks | "SLO", "SLA", "alert", "on-call", "incident" |
+
+### Prompts (Task Templates)
+
+Prompts in `.github/prompts/` are for specific, repeatable tasks:
+
+| Prompt | Use For | Output |
+|--------|---------|--------|
+| `/generate-load-test` | Create a complete load test | JMX file + config + manifest entry |
+| `/design-chaos-experiment` | Design a chaos experiment | Bicep file + hypothesis + abort conditions |
+| `/analyze-and-fix-error` | Debug and fix an error | Root cause + code fix + regression tests |
+
+### Azure Load Testing MCP Integration
+
+The `load-testing-expert` skill uses Azure MCP tools for direct Azure Load Testing operations:
+
+```
+mcp__azure__loadtesting_create_test    - Create new load tests
+mcp__azure__loadtesting_get_test       - View test configuration
+mcp__azure__loadtesting_create_run     - Execute test runs
+mcp__azure__loadtesting_get_run        - Get test results
+mcp__azure__loadtesting_list_runs      - View test history
+```
 
 ## 📊 Observability
 

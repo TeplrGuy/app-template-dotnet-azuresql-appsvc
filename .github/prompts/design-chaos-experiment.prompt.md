@@ -1,5 +1,6 @@
 ---
 description: "Design a chaos experiment with integrated load testing for Azure Chaos Studio"
+tools: ['codebase', 'edit/editFiles', 'terminalCommand', 'search']
 ---
 
 # 🔥 Design Chaos Experiment Agent

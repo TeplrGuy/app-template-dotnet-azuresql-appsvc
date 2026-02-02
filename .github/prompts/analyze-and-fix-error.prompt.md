@@ -1,6 +1,6 @@
 ---
 description: Analyze an application error, generate a fix, and create regression tests
-agent: agent
+tools: ['codebase', 'edit/editFiles', 'terminalCommand', 'search']
 ---
 
 # Analyze and Fix Error Prompt

@@ -38,28 +38,45 @@ Browse through:
 
 ## Act 2: AI-Powered Load Test Creation (10 min)
 
-### 🤖 Use GitHub Copilot to Generate Load Test
+### 🤖 Understanding Skills vs Prompts
+
+**Quick Explanation to Audience:**
+
+| Type | What It Is | When to Use |
+|------|------------|-------------|
+| **Skills** | Auto-activated knowledge bases | Copilot uses them automatically when relevant |
+| **Prompts** | Specific task templates | You invoke them for defined tasks |
+
+> "Skills teach Copilot HOW to do something. Prompts tell Copilot to DO a specific task."
+
+### 🧪 Use the Load Test Prompt
 
 1. **Open Copilot Chat** (`Ctrl+Shift+I`)
 
 2. **Use the prompt:**
    ```
-   @workspace /generate-load-test
+   /generate-load-test
+   
+   Create a load test for the student enrollment API that:
+   - Simulates 100 concurrent users
+   - Tests GET /Students and POST /Students/Create
+   - Runs for 5 minutes with 1 minute ramp-up
    ```
 
-3. **Show the generated JMeter XML:**
-   - Thread groups
-   - User scenarios (browse, search, create)
-   - Assertions and timers
+3. **Show what gets generated:**
+   - `loadtests/scenarios/student-enrollment.jmx` - JMeter test plan
+   - `loadtests/scenarios/student-enrollment-config.yaml` - Azure config
+   - Updated `loadtests/manifest.yaml` - Auto-discovery entry
 
-4. **Explain the config:**
-   ```yaml
-   failureCriteria:
-     - avg(response_time_ms) > 1000
-     - percentage(error) > 1
+4. **Highlight the Azure Load Testing MCP integration:**
+   ```
+   The skill uses Azure MCP tools to interact directly with Azure Load Testing:
+   - mcp__azure__loadtesting_create_test
+   - mcp__azure__loadtesting_create_run
+   - mcp__azure__loadtesting_get_run
    ```
 
-**Key Point:** "Copilot understands our application structure and creates realistic test scenarios."
+**Key Point:** "The prompt creates files. The skill provides the knowledge. MCP tools execute against Azure."
 
 ---
 
@@ -102,25 +119,34 @@ gh workflow run build-test-deploy.yml \
 
 ## Act 4: Chaos Engineering with AI (10 min)
 
-### 🔥 Design Chaos Experiment
+### 🔥 Design Chaos Experiment with Prompt
 
-1. **Open Copilot Chat:**
+1. **Use the chaos experiment prompt:**
    ```
-   @workspace /design-chaos-experiment
+   /design-chaos-experiment
    
    Scenario: Black Friday sale with database becoming slow
+   Hypothesis: App should degrade gracefully (2x response time, <5% errors)
+   Target: Azure SQL Database
    ```
 
-2. **Review generated Bicep:**
-   - SQL latency injection
-   - 500ms additional delay
-   - 3-minute duration
+2. **Review what gets generated:**
+   - `infra/chaos/experiments/sql-latency-blackfriday.bicep` - Experiment definition
+   - Hypothesis documentation
+   - Abort conditions
+   - Companion load test reference
 
-3. **Deploy experiment:**
+3. **Show how the chaos-engineering skill auto-activated:**
+   > "Notice Copilot automatically used the chaos-engineering skill. It knows about:
+   > - Blast radius control
+   > - Steady state definitions  
+   > - Azure Chaos Studio fault library"
+
+4. **Deploy experiment:**
    ```bash
    az deployment group create \
-     --template-file infra/chaos/experiments/sql-latency.bicep \
-     --parameters sqlDatabaseResourceId="..."
+     --template-file infra/chaos/experiments/sql-latency-blackfriday.bicep \
+     --parameters targetResourceId="/subscriptions/.../databases/contosodb"
    ```
 
 ### 🎯 Run Experiment During Load
@@ -132,64 +158,90 @@ gh workflow run build-test-deploy.yml \
 
 ### 📊 Observe Impact
 
-- Response time spike
-- Possible error increase
-- CPU/memory changes
+- Response time spike (expected: ~2x baseline)
+- Error rate (should stay <5%)
+- Circuit breaker activation (if implemented)
 
-**Key Point:** "We see the database latency causes ~3x response time increase, but the app stays up."
+**Key Point:** "The skill knew to include abort conditions - safety is built into the design."
 
 ---
 
 ## Act 5: Closed Loop Remediation (5-10 min)
 
-### 🤖 AI Finds the Issue
+### 🤖 AI Finds and Fixes the Issue
 
 1. **Simulate alert received:**
    ```
    Alert: High response time detected
    p95 latency: 2400ms (threshold: 2000ms)
+   Error: SqlException - Connection timeout
    ```
 
-2. **Use Copilot:**
+2. **Use the remediation prompt:**
    ```
-   @workspace /analyze-and-fix-error
+   /analyze-and-fix-error
    
-   Error: Database query timeout exceptions
-   Application Insights trace attached
+   Error: SqlException: Connection Timeout Expired
+   Stack trace: at ContosoUniversity.Data.SchoolContext...
+   Frequency: Intermittent (during chaos experiment)
+   Environment: Staging
    ```
 
-3. **Review AI suggestions:**
-   - Add connection timeout settings
-   - Implement retry with exponential backoff
-   - Add circuit breaker pattern
+3. **Show what the remediation-expert skill provides:**
+   - Root cause analysis
+   - Code fix with Polly retry logic
+   - Unit test that reproduces the issue
+   - Integration test that verifies the fix
 
-4. **Apply fix** (show code change)
+4. **Review the generated fix:**
+   ```csharp
+   // Before: No retry logic
+   await _context.Students.ToListAsync();
+   
+   // After: With EF Core retry
+   services.AddDbContext<SchoolContext>(options =>
+       options.UseSqlServer(connectionString, sqlOptions =>
+           sqlOptions.EnableRetryOnFailure(
+               maxRetryCount: 5,
+               maxRetryDelay: TimeSpan.FromSeconds(30),
+               errorNumbersToAdd: null)));
+   ```
 
 5. **Pipeline triggers:**
-   - Build → Test → Deploy → Load Test
-   - Verify fix works
+   - Build → Test → Load Test → Chaos Test
+   - Verify fix works under the same chaos conditions
 
-**Key Point:** "AI + automation creates a self-healing development loop."
+**Key Point:** "The skill automatically includes regression tests. We'll never have this issue unreported again."
 
 ---
 
 ## Closing (3 min)
 
-### 🎯 What We Demonstrated
+### 🎯 Skills vs Prompts Recap
 
-| Capability | Tool |
-|------------|------|
-| Generate test scenarios | GitHub Copilot |
-| Performance validation | Azure Load Testing |
-| Resilience testing | Azure Chaos Studio |
-| Observability | Azure Monitor |
-| Automated remediation | GitHub Actions + AI |
+| Component | Purpose | Example |
+|-----------|---------|---------|
+| **Skills** | Knowledge that auto-activates | `chaos-engineering` skill knows about blast radius, FMEA, abort conditions |
+| **Prompts** | Specific task with outputs | `/generate-load-test` creates JMX + config + manifest entry |
+| **MCP Tools** | Direct Azure integration | `mcp__azure__loadtesting_create_run` executes tests |
+
+### 📊 What We Demonstrated
+
+| Capability | Tool | Type |
+|------------|------|------|
+| Generate test scenarios | `/generate-load-test` prompt | Task template |
+| Design chaos experiments | `/design-chaos-experiment` prompt | Task template |
+| Performance validation | Azure Load Testing + MCP | Azure service |
+| Resilience testing | Azure Chaos Studio | Azure service |
+| Error analysis & fixes | `/analyze-and-fix-error` prompt | Task template |
+| Auto-activated knowledge | Skills (`chaos-engineering`, etc.) | Knowledge base |
 
 ### 📚 Resources
 
+- [Agent Skills Specification](https://agentskills.io/specification)
+- [Azure Load Testing MCP](https://learn.microsoft.com/azure/developer/azure-mcp-server/tools/azure-load-testing)
 - [Azure Load Testing Docs](https://learn.microsoft.com/azure/load-testing/)
 - [Azure Chaos Studio Docs](https://learn.microsoft.com/azure/chaos-studio/)
-- [GitHub Copilot Skills](https://docs.github.com/copilot)
 
 ### ❓ Q&A
 

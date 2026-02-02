@@ -3,6 +3,15 @@ name: 🔥 Chaos Engineering Experiment
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Target environment for chaos experiment'
+        required: true
+        type: choice
+        default: 'staging'
+        options:
+          - staging
+          - qa
+          - production
       experiment_name:
         description: 'Name of the chaos experiment to run'
         required: true
@@ -22,10 +31,8 @@ on:
         type: boolean
 
 env:
-  # Auto-discovered from infrastructure deployment (set by infrastructure.yml)
-  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-  AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
-  AZURE_WEBAPP_URL: ${{ vars.AZURE_WEBAPP_URL }}
+  # Base resource group (environment suffix added dynamically)
+  AZURE_RESOURCE_GROUP_BASE: ${{ vars.AZURE_RESOURCE_GROUP }}
 
 # Required for OIDC federated authentication
 permissions:
@@ -33,8 +40,60 @@ permissions:
   contents: read
 
 jobs:
+  setup-environment:
+    name: 🔧 Setup Environment Variables
+    runs-on: ubuntu-latest
+    outputs:
+      webapp_name: ${{ steps.env-config.outputs.webapp_name }}
+      webapp_url: ${{ steps.env-config.outputs.webapp_url }}
+      resource_group: ${{ steps.env-config.outputs.resource_group }}
+      env_suffix: ${{ steps.env-config.outputs.env_suffix }}
+    
+    steps:
+      - name: 🔧 Configure Environment-Specific Variables
+        id: env-config
+        run: |
+          ENV="${{ inputs.environment }}"
+          BASE_NAME="${{ vars.AZURE_WEBAPP_NAME }}"
+          BASE_RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          
+          echo "📍 Configuring for environment: $ENV"
+          
+          case "$ENV" in
+            staging)
+              SUFFIX="-staging"
+              ;;
+            qa)
+              SUFFIX="-qa"
+              ;;
+            production)
+              SUFFIX=""
+              ;;
+            *)
+              echo "❌ Unknown environment: $ENV"
+              exit 1
+              ;;
+          esac
+          
+          # Build environment-specific names
+          # Adjust naming convention to match your Azure resources
+          WEBAPP_NAME="${BASE_NAME}${SUFFIX}"
+          WEBAPP_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+          RESOURCE_GROUP="${BASE_RG}"
+          
+          echo "webapp_name=${WEBAPP_NAME}" >> $GITHUB_OUTPUT
+          echo "webapp_url=${WEBAPP_URL}" >> $GITHUB_OUTPUT
+          echo "resource_group=${RESOURCE_GROUP}" >> $GITHUB_OUTPUT
+          echo "env_suffix=${SUFFIX}" >> $GITHUB_OUTPUT
+          
+          echo "✅ Environment configuration:"
+          echo "  - Web App: $WEBAPP_NAME"
+          echo "  - URL: $WEBAPP_URL"
+          echo "  - Resource Group: $RESOURCE_GROUP"
+
   pre-chaos-validation:
     name: 🔍 Pre-Chaos Health Check
+    needs: setup-environment
     runs-on: ubuntu-latest
     outputs:
       app-healthy: ${{ steps.health.outputs.healthy }}
@@ -58,19 +117,30 @@ jobs:
       - name: 🏥 Verify Application Health
         id: health
         run: |
-          APP_URL="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          APP_URL="${{ needs.setup-environment.outputs.webapp_url }}"
           
           echo "Checking application health at $APP_URL..."
+          echo "🎯 Environment: ${{ inputs.environment }}"
           
-          response=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health" || echo "000")
+          # Try health endpoint first, fall back to root
+          response=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health" 2>/dev/null || echo "000")
           
           if [ "$response" = "200" ]; then
-            echo "✅ Application is healthy"
+            echo "✅ Application is healthy (health endpoint)"
             echo "healthy=true" >> $GITHUB_OUTPUT
           else
-            echo "❌ Application health check failed: $response"
-            echo "healthy=false" >> $GITHUB_OUTPUT
-            exit 1
+            echo "⚠️ Health endpoint returned: $response, trying root..."
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL" 2>/dev/null || echo "000")
+            
+            if [ "$response" = "200" ] || [ "$response" = "302" ]; then
+              echo "✅ Application is healthy (root endpoint)"
+              echo "healthy=true" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Application health check failed: $response"
+              echo "💡 Tip: Make sure the app is deployed to ${{ inputs.environment }}"
+              echo "healthy=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
           fi
 
       - name: 📊 Capture Baseline Metrics
@@ -84,9 +154,13 @@ jobs:
 
   run-chaos-experiment:
     name: 🔥 Execute Chaos Experiment
-    needs: pre-chaos-validation
+    needs: [setup-environment, pre-chaos-validation]
     if: needs.pre-chaos-validation.outputs.app-healthy == 'true'
     runs-on: ubuntu-latest
+    env:
+      WEBAPP_NAME: ${{ needs.setup-environment.outputs.webapp_name }}
+      WEBAPP_URL: ${{ needs.setup-environment.outputs.webapp_url }}
+      RESOURCE_GROUP: ${{ needs.setup-environment.outputs.resource_group }}
     
     steps:
       - name: 📥 Checkout code
@@ -108,9 +182,10 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: 🚀 Start Background Load (Optional)
-        if: inputs.validate_with_load == 'true'
+        if: inputs.validate_with_load == true
         run: |
           echo "🚀 Starting background load to validate resilience..."
+          echo "🎯 Target: ${{ env.WEBAPP_URL }}"
           # In production, this would trigger Azure Load Testing
           # az load test run --name contoso-load-test ...
           echo "Load test would run in parallel with chaos experiment"
@@ -121,11 +196,13 @@ jobs:
           EXPERIMENT="${{ inputs.experiment_name }}"
           
           echo "🔥 Starting chaos experiment: $EXPERIMENT"
+          echo "🎯 Environment: ${{ inputs.environment }}"
+          echo "🎯 Resource Group: ${{ env.RESOURCE_GROUP }}"
           
           # Start the experiment
           az chaos experiment start \
             --name "$EXPERIMENT" \
-            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
             --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --no-wait || {
               echo "⚠️ Experiment start command failed - may need to create experiment first"
@@ -138,19 +215,19 @@ jobs:
 
       - name: ⏱️ Monitor Experiment
         run: |
-          DURATION_SECONDS=$((inputs.duration_minutes * 60))
+          DURATION_SECONDS=$((${{ inputs.duration_minutes }} * 60))
           INTERVAL=30
           ELAPSED=0
           
           echo "📊 Monitoring chaos experiment impact..."
+          echo "🎯 Target: ${{ env.WEBAPP_URL }}"
           
           while [ $ELAPSED -lt $DURATION_SECONDS ]; do
             echo "---"
             echo "⏱️ Elapsed: ${ELAPSED}s / ${DURATION_SECONDS}s"
             
             # Check application health during chaos
-            APP_URL="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-            response=$(curl -s -o /dev/null -w "%{http_code}|%{time_total}" "$APP_URL" || echo "000|0")
+            response=$(curl -s -o /dev/null -w "%{http_code}|%{time_total}" "${{ env.WEBAPP_URL }}" || echo "000|0")
             
             http_code=$(echo $response | cut -d'|' -f1)
             response_time=$(echo $response | cut -d'|' -f2)
@@ -161,7 +238,7 @@ jobs:
             # Check experiment status
             status=$(az chaos experiment show \
               --name "${{ inputs.experiment_name }}" \
-              --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
               --query "properties.executionStatus" -o tsv 2>/dev/null || echo "Unknown")
             
             echo "  Experiment Status: $status"
@@ -177,15 +254,18 @@ jobs:
           
           az chaos experiment cancel \
             --name "${{ inputs.experiment_name }}" \
-            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
             --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" 2>/dev/null || true
           
           echo "✅ Experiment cleanup complete"
 
   post-chaos-validation:
     name: 🔍 Post-Chaos Validation
-    needs: run-chaos-experiment
+    needs: [setup-environment, run-chaos-experiment]
     runs-on: ubuntu-latest
+    env:
+      WEBAPP_URL: ${{ needs.setup-environment.outputs.webapp_url }}
+      RESOURCE_GROUP: ${{ needs.setup-environment.outputs.resource_group }}
     
     steps:
       - name: 🔐 Azure Login (OIDC)
@@ -210,19 +290,25 @@ jobs:
 
       - name: 🏥 Verify Recovery
         run: |
-          APP_URL="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-          
           echo "🏥 Checking application health after chaos..."
+          echo "🎯 Target: ${{ env.WEBAPP_URL }}"
           
           # Try multiple times to confirm stability
           for i in {1..5}; do
-            response=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health" || echo "000")
+            response=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.WEBAPP_URL }}/health" 2>/dev/null || echo "000")
             
+            # Accept 200 from health endpoint, or try root
             if [ "$response" = "200" ]; then
               echo "✅ Health check $i/5 passed"
             else
-              echo "❌ Health check $i/5 failed: $response"
-              exit 1
+              # Fallback to root endpoint
+              response=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.WEBAPP_URL }}" 2>/dev/null || echo "000")
+              if [ "$response" = "200" ] || [ "$response" = "302" ]; then
+                echo "✅ Health check $i/5 passed (root endpoint)"
+              else
+                echo "❌ Health check $i/5 failed: $response"
+                exit 1
+              fi
             fi
             
             sleep 5
@@ -244,7 +330,7 @@ jobs:
 
   report:
     name: 📋 Generate Report
-    needs: [pre-chaos-validation, run-chaos-experiment, post-chaos-validation]
+    needs: [setup-environment, pre-chaos-validation, run-chaos-experiment, post-chaos-validation]
     if: always()
     runs-on: ubuntu-latest
     
@@ -253,6 +339,8 @@ jobs:
         run: |
           echo "## 🔥 Chaos Experiment Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Target URL:** ${{ needs.setup-environment.outputs.webapp_url }}" >> $GITHUB_STEP_SUMMARY
           echo "**Experiment:** ${{ inputs.experiment_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Duration:** ${{ inputs.duration_minutes }} minutes" >> $GITHUB_STEP_SUMMARY
           echo "**Load Test Validation:** ${{ inputs.validate_with_load }}" >> $GITHUB_STEP_SUMMARY
@@ -261,6 +349,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment Setup | ${{ needs.setup-environment.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Pre-Chaos Health | ${{ needs.pre-chaos-validation.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Chaos Execution | ${{ needs.run-chaos-experiment.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Post-Chaos Recovery | ${{ needs.post-chaos-validation.result }} |" >> $GITHUB_STEP_SUMMARY

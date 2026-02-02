@@ -1,5 +1,6 @@
 ---
 description: "Generate a new load test that auto-integrates with CI/CD pipeline"
+tools: ['codebase', 'edit/editFiles', 'terminalCommand', 'search', 'mcp__azure__loadtesting_create_test', 'mcp__azure__loadtesting_get_test', 'mcp__azure__loadtesting_create_run', 'mcp__azure__loadtesting_get_run']
 ---
 
 # 🧪 Generate Load Test Agent
