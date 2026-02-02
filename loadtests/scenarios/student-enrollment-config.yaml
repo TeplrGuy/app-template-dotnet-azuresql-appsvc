@@ -1,0 +1,65 @@
+# =============================================================================
+# Azure Load Testing Configuration: Student Enrollment Load Test
+# =============================================================================
+# Test: 100 concurrent users, GET /Students and POST /Students/Create
+# Duration: 5 minutes with 1 minute ramp-up
+# =============================================================================
+
+version: v0.1
+testId: student-enrollment
+displayName: Student Enrollment Load Test
+testPlan: student-enrollment.jmx
+description: >
+  Load test simulating 100 concurrent users performing student enrollment 
+  operations: browsing student list (GET /Students) and creating new students 
+  (POST /Students/Create). Runs for 5 minutes with 1 minute ramp-up.
+
+engineInstances: 1
+
+# =============================================================================
+# Pass/Fail Criteria
+# =============================================================================
+failureCriteria:
+  # Average response time must be under 2 seconds
+  - avg(response_time_ms) > 2000
+  # Error rate must be under 1%
+  - percentage(error) > 1
+  # 95th percentile response time must be under 3 seconds
+  - p95(response_time_ms) > 3000
+  # 99th percentile response time must be under 5 seconds
+  - p99(response_time_ms) > 5000
+
+# =============================================================================
+# Auto-stop Configuration
+# =============================================================================
+autoStop:
+  errorPercentage: 80
+  timeWindow: 60
+
+# =============================================================================
+# Environment Variables (injected by Azure Load Testing)
+# =============================================================================
+env:
+  - name: webapp_url
+    value: ${WEBAPP_URL}
+  - name: concurrent_users
+    value: "${CONCURRENT_USERS}"
+  - name: duration_seconds
+    value: "${DURATION_SECONDS}"
+  - name: ramp_up_seconds
+    value: "${RAMP_UP_SECONDS}"
+
+# =============================================================================
+# Secrets (if needed for authenticated endpoints)
+# =============================================================================
+# secrets:
+#   - name: api_key
+#     value: ${API_KEY}
+
+# =============================================================================
+# Key Vault References (for production)
+# =============================================================================
+# keyVaultReferenceIdentity: <managed-identity-id>
+# secrets:
+#   - name: db_password
+#     value: https://<keyvault>.vault.azure.net/secrets/db-password
