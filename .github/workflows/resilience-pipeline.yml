@@ -267,10 +267,7 @@ jobs:
           resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
           env: |
             [
-              { "name": "webapp_url", "value": "${{ steps.extract-host.outputs.hostname }}" },
-              { "name": "concurrent_users", "value": "10" },
-              { "name": "duration_seconds", "value": "60" },
-              { "name": "ramp_up_seconds", "value": "10" }
+              { "name": "host", "value": "${{ steps.extract-host.outputs.hostname }}" }
             ]
         continue-on-error: true  # Don't block QA on load test failures
 
@@ -408,10 +405,7 @@ jobs:
           resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
           env: |
             [
-              { "name": "webapp_url", "value": "${{ steps.extract-host.outputs.hostname }}" },
-              { "name": "concurrent_users", "value": "50" },
-              { "name": "duration_seconds", "value": "300" },
-              { "name": "ramp_up_seconds", "value": "60" }
+              { "name": "host", "value": "${{ steps.extract-host.outputs.hostname }}" }
             ]
 
       - name: ✅ Validate Results

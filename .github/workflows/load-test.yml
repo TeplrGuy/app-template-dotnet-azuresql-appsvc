@@ -197,6 +197,10 @@ jobs:
           RAMPUP="${{ needs.discover-tests.outputs.profile_rampup }}"
           RUN_ID="${{ github.run_id }}"
           
+          # Extract hostname from URL (remove https:// prefix)
+          HOST=$(echo "$WEBAPP_URL" | sed 's|https://||' | sed 's|http://||' | sed 's|/.*||')
+          echo "🌐 Target host: $HOST"
+          
           # Check if JMeter file exists
           if [ ! -f "loadtests/$JMETER_FILE" ]; then
             echo "❌ JMeter file not found: loadtests/$JMETER_FILE"
@@ -219,14 +223,8 @@ jobs:
             - percentage(error) > 1
             - p95(response_time_ms) > 3000
           env:
-            - name: webapp_url
-              value: "${WEBAPP_URL}"
-            - name: concurrent_users
-              value: "${USERS}"
-            - name: duration_seconds
-              value: "${DURATION}"
-            - name: ramp_up_seconds
-              value: "${RAMPUP}"
+            - name: host
+              value: "${HOST}"
           EOF
           
           # Remove leading whitespace from each line (heredoc indentation fix)

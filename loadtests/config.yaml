@@ -3,6 +3,7 @@
 # =============================================================================
 # This is the default config used by resilience-pipeline.yml
 # All tests use the shared template: templates/http-test.jmx
+# The template uses env variable "host" for the target hostname
 # =============================================================================
 
 version: v0.1
@@ -15,19 +16,12 @@ engineInstances: 1
 
 # =============================================================================
 # Environment Variables
-# These are overridden by CI/CD pipeline per environment:
-# - QA: 10 users, 60s duration (quick feedback)
-# - Staging: 50 users, 300s duration (production-like)
+# The "host" variable is set by the pipeline per environment
+# Template has 100 users, 60s ramp-up, 300s duration hardcoded
 # =============================================================================
 env:
-  - name: webapp_url
-    value: ${WEBAPP_URL:-localhost}
-  - name: concurrent_users
-    value: ${CONCURRENT_USERS:-50}
-  - name: duration_seconds
-    value: ${DURATION_SECONDS:-300}
-  - name: ramp_up_seconds
-    value: ${RAMP_UP_SECONDS:-60}
+  - name: host
+    value: ${HOST:-localhost}
 
 # =============================================================================
 # Failure Criteria (Deployment Gates)
