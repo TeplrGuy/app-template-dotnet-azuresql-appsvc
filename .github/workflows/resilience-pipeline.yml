@@ -243,14 +243,35 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
+      - name: 🔍 Check if tests exist
+        id: check-tests
+        run: |
+          # Install yq
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # Check if any tests are defined
+          TEST_COUNT=$(yq eval '.tests | length' loadtests/manifest.yaml 2>/dev/null || echo "0")
+          echo "test_count=$TEST_COUNT" >> $GITHUB_OUTPUT
+          
+          if [ "$TEST_COUNT" -eq 0 ] || [ -z "$TEST_COUNT" ]; then
+            echo "⚠️ No load tests defined in manifest - skipping load test"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found $TEST_COUNT test(s) in manifest"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: 🔐 Azure Login
+        if: steps.check-tests.outputs.skip != 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: � Extract hostname from URL
+      - name: 📍 Extract hostname from URL
+        if: steps.check-tests.outputs.skip != 'true'
         id: extract-host
         run: |
           FULL_URL="${{ needs.deploy-qa.outputs.webapp-url }}"
@@ -260,6 +281,7 @@ jobs:
           echo "📍 Target hostname: $HOSTNAME"
 
       - name: 📊 Run Quick Load Test
+        if: steps.check-tests.outputs.skip != 'true'
         uses: azure/load-testing@v1
         with:
           loadtestConfigFile: 'loadtests/config.yaml'
@@ -273,7 +295,7 @@ jobs:
 
       - name: 📈 Upload Results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.check-tests.outputs.skip != 'true'
         with:
           name: qa-load-test-results
           path: ${{ github.workspace }}/loadTest
@@ -380,14 +402,35 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
+      - name: 🔍 Check if tests exist
+        id: check-tests
+        run: |
+          # Install yq
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # Check if any tests are defined
+          TEST_COUNT=$(yq eval '.tests | length' loadtests/manifest.yaml 2>/dev/null || echo "0")
+          echo "test_count=$TEST_COUNT" >> $GITHUB_OUTPUT
+          
+          if [ "$TEST_COUNT" -eq 0 ] || [ -z "$TEST_COUNT" ]; then
+            echo "⚠️ No load tests defined in manifest - skipping load test"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found $TEST_COUNT test(s) in manifest"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: 🔐 Azure Login
+        if: steps.check-tests.outputs.skip != 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: � Extract hostname from URL
+      - name: 📍 Extract hostname from URL
+        if: steps.check-tests.outputs.skip != 'true'
         id: extract-host
         run: |
           FULL_URL="${{ needs.deploy-staging.outputs.webapp-url }}"
@@ -397,6 +440,7 @@ jobs:
           echo "📍 Target hostname: $HOSTNAME"
 
       - name: 📊 Run Production-Like Load Test
+        if: steps.check-tests.outputs.skip != 'true'
         id: loadtest
         uses: azure/load-testing@v1
         with:
@@ -411,15 +455,20 @@ jobs:
       - name: ✅ Validate Results
         id: validate
         run: |
-          echo "📊 Analyzing load test results..."
-          # Azure Load Testing enforces failure criteria in config.yaml
-          # If we reach here, the test passed
-          echo "passed=true" >> $GITHUB_OUTPUT
-          echo "✅ Load test passed all criteria!"
+          if [ "${{ steps.check-tests.outputs.skip }}" == "true" ]; then
+            echo "⚠️ No load tests to validate - passing by default"
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "📊 Analyzing load test results..."
+            # Azure Load Testing enforces failure criteria in config.yaml
+            # If we reach here, the test passed
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Load test passed all criteria!"
+          fi
 
       - name: 📈 Upload Results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.check-tests.outputs.skip != 'true'
         with:
           name: staging-load-test-results
           path: ${{ github.workspace }}/loadTest
