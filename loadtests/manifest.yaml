@@ -44,33 +44,8 @@ profiles:
 # =============================================================================
 # Test Definitions - All tests use the shared template
 # =============================================================================
-tests:
-  # Default comprehensive load test
-  - id: contoso-load-test
-    name: "Contoso University Load Test"
-    description: "Comprehensive load test covering all major endpoints"
-    enabled: true
-    jmeterFile: templates/http-test.jmx
-    profiles: [smoke, load, stress, chaos]
-    endpoints:
-      - /
-      - /Students
-      - /Courses
-      - /Departments
-      - /Instructors
-    tags: [comprehensive, all-endpoints]
-
-  # Courses-only load test
-  - id: courses-load-test
-    name: "Courses Page Load Test"
-    description: "Load test covering only /Courses and /Courses/Details pages"
-    enabled: true
-    jmeterFile: templates/courses-test.jmx
-    profiles: [smoke, load, stress]
-    endpoints:
-      - /Courses
-      - /Courses/Details/{id}
-    tags: [courses, focused]
+tests: []
+  # No tests defined - use @workspace /generate-load-test to add tests
 
 # =============================================================================
 # Default failure criteria (can be overridden per test)
@@ -83,18 +58,8 @@ defaultCriteria:
 # =============================================================================
 # Chaos Experiments - Linked to the chaos profile tests
 # =============================================================================
-chaosExperiments:
-  - id: cpu-pressure
-    name: "CPU Pressure Test"
-    description: "Induces CPU stress on application instances"
-    bicep_file: ../infra/chaos/experiments/cpu-pressure.bicep
-    linked_test: contoso-load-test
-    
-  - id: sql-latency
-    name: "SQL Latency Injection"
-    description: "Injects latency into database operations"
-    bicep_file: ../infra/chaos/experiments/sql-latency.bicep
-    linked_test: contoso-load-test
+chaosExperiments: []
+  # No chaos experiments linked - add tests first, then link experiments
 
 # =============================================================================
 # Environment-specific URLs (referenced by workflow)

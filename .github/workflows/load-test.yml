@@ -117,14 +117,17 @@ jobs:
           
           # Get tests
           if [ "$TEST_IDS" == "all" ]; then
-            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "contoso-load-test")
+            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
           else
             TESTS="$TEST_IDS"
           fi
           
-          # Fallback if no tests found
+          # Handle no tests found
           if [ -z "$TESTS" ]; then
-            TESTS="contoso-load-test"
+            echo "⚠️ No tests found for profile: $PROFILE"
+            echo "tests=[]" >> $GITHUB_OUTPUT
+            echo "test_count=0" >> $GITHUB_OUTPUT
+            exit 0
           fi
           
           echo "🧪 Tests to run: $TESTS"
@@ -136,6 +139,13 @@ jobs:
           
           for TEST_ID in $(echo $TESTS | tr ',' ' '); do
             [ -z "$TEST_ID" ] && continue
+            
+            # Check if test exists in manifest
+            TEST_EXISTS=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .id" loadtests/manifest.yaml 2>/dev/null)
+            if [ -z "$TEST_EXISTS" ]; then
+              echo "⚠️ Test '$TEST_ID' not found in manifest, skipping..."
+              continue
+            fi
             
             if [ "$FIRST" = false ]; then TEST_ARRAY+=","; fi
             FIRST=false
@@ -152,7 +162,11 @@ jobs:
           echo "tests=$TEST_ARRAY" >> $GITHUB_OUTPUT
           echo "test_count=$TEST_COUNT" >> $GITHUB_OUTPUT
           
-          echo "📊 Discovered $TEST_COUNT test(s)"
+          if [ $TEST_COUNT -eq 0 ]; then
+            echo "⚠️ No valid tests to run"
+          else
+            echo "📊 Discovered $TEST_COUNT test(s)"
+          fi
 
   # ===========================================================================
   # RUN LOAD TESTS
