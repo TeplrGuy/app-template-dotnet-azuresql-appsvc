@@ -6,16 +6,22 @@ name: 🧪 Load Testing (Auto-Discovery)
 # This workflow automatically discovers tests from loadtests/manifest.yaml
 # All tests use the shared template: loadtests/templates/http-test.jmx
 # 
-# TO ADD A NEW TEST:
-# 1. Add the test entry to loadtests/manifest.yaml (use templates/http-test.jmx)
-# 2. Commit and push - no workflow changes needed!
+# TRIGGERS:
+# - On push/PR to main when loadtests/ folder or this workflow changes
+# - Manual trigger via workflow_dispatch
 # =============================================================================
 
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'loadtests/**'
+      - '.github/workflows/load-test.yml'
   push:
     branches: [main]
+    paths:
+      - 'loadtests/**'
+      - '.github/workflows/load-test.yml'
   workflow_dispatch:
     inputs:
       environment:
