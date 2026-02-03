@@ -108,10 +108,19 @@ resource chaosExperiment 'Microsoft.Chaos/experiments@2023-11-01' = {
 
 ### Step 3: Create Companion Load Test (if needed)
 
-For observing chaos impact, create a load test in `loadtests/scenarios/chaos-{name}.jmx` that:
-- Runs for 10+ minutes (longer than chaos experiment)
-- Uses relaxed failure criteria (expects degradation)
-- Focuses on the affected endpoints
+For observing chaos impact, **register a new test in `loadtests/manifest.yaml`** that uses the shared template:
+
+```yaml
+  - id: chaos-{experiment-name}
+    name: "Chaos {Experiment Name} Test"
+    description: "Load test to observe impact during {experiment} chaos experiment"
+    enabled: true
+    jmeterFile: templates/http-test.jmx
+    profiles: [chaos]
+    tags: [chaos, {experiment-name}]
+```
+
+**DO NOT create new JMX files.** All tests use the shared template at `loadtests/templates/http-test.jmx`.
 
 ### Step 4: Register in Manifest
 

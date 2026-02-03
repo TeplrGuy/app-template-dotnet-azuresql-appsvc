@@ -24,12 +24,11 @@ Use the Azure MCP Server tools for load testing operations:
 | `mcp__azure__loadtesting_get_run` | Get test run results and metrics |
 | `mcp__azure__loadtesting_list_runs` | List all test runs for a test |
 
-## Primary Capability: Generate Tests That Auto-Integrate
+## Primary Capability: Register Tests That Auto-Integrate
 
 When generating load tests, you MUST:
-1. Create JMeter test files in `loadtests/scenarios/`
-2. Create config files in `loadtests/scenarios/`
-3. **Register the test in `loadtests/manifest.yaml`** so the CI/CD pipeline auto-discovers it
+1. **Use the shared template** at `loadtests/templates/http-test.jmx` (DO NOT create new JMX files)
+2. **Register the test in `loadtests/manifest.yaml`** so the CI/CD pipeline auto-discovers it
 
 ## Manifest Integration (CRITICAL)
 
@@ -42,15 +41,16 @@ tests:
   - id: {your-test-id}
     name: "{Your Test Name}"
     description: "{What this test does}"
-    jmeterFile: scenarios/{your-test-id}.jmx
-    configFile: scenarios/{your-test-id}-config.yaml
+    jmeterFile: templates/http-test.jmx
     profiles:
-      - smoke  # 10 users, 2 min
-      - load   # 100 users, 5 min
+      - smoke  # 5 users, 1 min
+      - load   # 50 users, 5 min
     enabled: true
     tags:
       - {relevant-tag}
 ```
+
+**DO NOT create new JMX files.** All tests use the shared template which covers all Contoso University endpoints.
 
 ## Your Capabilities
 

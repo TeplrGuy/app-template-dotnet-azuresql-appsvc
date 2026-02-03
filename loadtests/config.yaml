@@ -1,8 +1,8 @@
 # =============================================================================
-# Azure Load Testing Configuration (Legacy - kept for reference)
+# Azure Load Testing Configuration
 # =============================================================================
-# NOTE: This file is no longer used directly. Tests are now auto-discovered
-# from manifest.yaml. See the scenarios/ folder for individual test configs.
+# This is the default config used by resilience-pipeline.yml
+# All tests use the shared template: templates/http-test.jmx
 # =============================================================================
 
 version: v0.1
@@ -10,7 +10,7 @@ testId: contoso-university-load-test
 displayName: Contoso University Load Test
 description: Load test for Contoso University - Tests key endpoints as deployment gate
 
-testPlan: scenarios/student-enrollment.jmx
+testPlan: templates/http-test.jmx
 engineInstances: 1
 
 # =============================================================================

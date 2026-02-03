@@ -2,22 +2,21 @@
 
 This folder contains load testing configurations for the Contoso University application using Azure Load Testing.
 
-## � Quick Start: Generate a New Test
+## 🚀 Quick Start: Generate a New Test
 
-Use GitHub Copilot to generate tests that automatically integrate with the CI/CD pipeline:
+Use GitHub Copilot to register tests that automatically integrate with the CI/CD pipeline:
 
 ```
 @workspace /generate-load-test
 
-Create a load test for the instructor management pages that simulates
-50 users browsing and 10 users creating new instructors
+Create a load test for stress testing with 200 concurrent users
 ```
 
 Copilot will:
-1. ✅ Create the JMeter test file in `scenarios/`
-2. ✅ Create the Azure config file in `scenarios/`
-3. ✅ Register it in `manifest.yaml`
-4. ✅ The pipeline auto-discovers it on next run!
+1. ✅ Register the test in `manifest.yaml`
+2. ✅ The pipeline auto-discovers it on next run!
+
+**Note:** All tests use the shared template `templates/http-test.jmx` - no new JMX files needed!
 
 ## 📁 Project Structure
 
@@ -25,38 +24,32 @@ Copilot will:
 loadtests/
 ├── manifest.yaml              # 🎯 Test registry - pipeline reads this!
 ├── config.yaml                # Default Azure Load Testing config
-├── contoso-load-test.jmx      # Main baseline test
+├── templates/
+│   └── http-test.jmx          # 📋 Shared JMeter template (DO NOT DELETE)
 ├── run-local.ps1              # Windows local runner
 ├── run-local.sh               # Linux/Mac local runner
-├── profiles/                  # Profile configurations
-│   ├── smoke.yaml            # 10 users, 2 min
-│   ├── load.yaml             # 100 users, 5 min
-│   └── stress.yaml           # 500 users, 10 min
-└── scenarios/                 # Individual test scenarios
-    ├── student-enrollment.jmx
-    ├── department-browse.jmx
-    └── chaos-resilience.jmx
+└── profiles/                  # Profile configurations
+    ├── smoke.yaml             # 5 users, 1 min
+    ├── load.yaml              # 50 users, 5 min
+    └── stress.yaml            # 200 users, 10 min
 ```
 
-## 📋 Adding a New Test (Manual)
+## 📋 Adding a New Test
 
-1. **Create JMeter test** in `scenarios/{test-id}.jmx`
-2. **Create config** in `scenarios/{test-id}-config.yaml`  
-3. **Register in manifest.yaml**:
+Simply register in `manifest.yaml` - all tests use the shared template:
 
 ```yaml
 tests:
   - id: my-new-test
     name: "My New Test"
     description: "What this test does"
-    jmeterFile: scenarios/my-new-test.jmx
-    configFile: scenarios/my-new-test-config.yaml
+    jmeterFile: templates/http-test.jmx
     profiles: [smoke, load]
     enabled: true
     tags: [custom]
 ```
 
-4. **Commit & Push** - The pipeline auto-discovers it!
+**Commit & Push** - The pipeline auto-discovers it!
 
 ## 🎯 Test Profiles
 

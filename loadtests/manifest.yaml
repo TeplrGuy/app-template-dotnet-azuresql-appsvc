@@ -2,11 +2,18 @@
 # Load Test Manifest - Central Registry for All Load Tests
 # =============================================================================
 # This manifest is used by the CI/CD pipeline to auto-discover and run tests.
-# When you add a new test using the generate-load-test prompt, register it here.
+# All tests use the standard template: templates/http-test.jmx
 # =============================================================================
 
 version: "1.0"
 description: "Contoso University Load Testing Manifest"
+
+# =============================================================================
+# JMeter Template - Single source of truth for all load tests
+# =============================================================================
+template:
+  jmeterFile: templates/http-test.jmx
+  description: "Standard HTTP test template for Contoso University"
 
 # Test profiles define the type of testing scenario
 profiles:
@@ -35,38 +42,23 @@ profiles:
     rampUpSeconds: 60
 
 # =============================================================================
-# Test Definitions - Add new tests here to have them auto-discovered
+# Test Definitions - All tests use the shared template
 # =============================================================================
 tests:
-  # Student Enrollment Load Test (100 users, 5 min)
-  - id: student-enrollment
-    name: "Student Enrollment Load Test"
-    description: "100 concurrent users testing GET /Students and POST /Students/Create for 5 minutes"
+  # Default comprehensive load test
+  - id: contoso-load-test
+    name: "Contoso University Load Test"
+    description: "Comprehensive load test covering all major endpoints"
     enabled: true
-    jmeterFile: scenarios/student-enrollment.jmx
-    configFile: scenarios/student-enrollment-config.yaml
-    profiles: [load, stress]
+    jmeterFile: templates/http-test.jmx
+    profiles: [smoke, load, stress, chaos]
     endpoints:
+      - /
       - /Students
-      - /Students/Create
-    tags: [enrollment, students, crud, 100-users]
-    defaults:
-      concurrentUsers: 100
-      durationSeconds: 300
-      rampUpSeconds: 60
-
-  # Chaos Resilience Test (runs during chaos experiments)
-  - id: chaos-resilience
-    name: "Chaos Resilience Test"
-    description: "Validates application behavior during fault injection"
-    enabled: true
-    jmeterFile: scenarios/chaos-resilience.jmx
-    configFile: scenarios/chaos-config.yaml
-    profiles: [chaos]
-    endpoints:
-      - /health
-      - /api/students
-    tags: [chaos, resilience, fault-tolerance]
+      - /Courses
+      - /Departments
+      - /Instructors
+    tags: [comprehensive, all-endpoints]
 
 # =============================================================================
 # Default failure criteria (can be overridden per test)
@@ -76,13 +68,6 @@ defaultCriteria:
   percentile95Ms: 5000
   errorPercentage: 1
 
-# Custom criteria per test ID (optional overrides)
-customCriteria:
-  chaos-resilience:
-    avgResponseTimeMs: 4000  # Higher tolerance during chaos
-    percentile95Ms: 8000
-    errorPercentage: 5       # Allow some errors during fault injection
-
 # =============================================================================
 # Chaos Experiments - Linked to the chaos profile tests
 # =============================================================================
@@ -91,13 +76,13 @@ chaosExperiments:
     name: "CPU Pressure Test"
     description: "Induces CPU stress on application instances"
     bicep_file: ../infra/chaos/experiments/cpu-pressure.bicep
-    linked_test: chaos-resilience
+    linked_test: contoso-load-test
     
   - id: sql-latency
     name: "SQL Latency Injection"
     description: "Injects latency into database operations"
     bicep_file: ../infra/chaos/experiments/sql-latency.bicep
-    linked_test: chaos-resilience
+    linked_test: contoso-load-test
 
 # =============================================================================
 # Environment-specific URLs (referenced by workflow)
