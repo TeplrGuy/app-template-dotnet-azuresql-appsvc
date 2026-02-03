@@ -60,6 +60,18 @@ tests:
       - /Instructors
     tags: [comprehensive, all-endpoints]
 
+  # Courses-only load test
+  - id: courses-load-test
+    name: "Courses Page Load Test"
+    description: "Load test covering only /Courses and /Courses/Details pages"
+    enabled: true
+    jmeterFile: templates/courses-test.jmx
+    profiles: [smoke, load, stress]
+    endpoints:
+      - /Courses
+      - /Courses/Details/{id}
+    tags: [courses, focused]
+
 # =============================================================================
 # Default failure criteria (can be overridden per test)
 # =============================================================================
