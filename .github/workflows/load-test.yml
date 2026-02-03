@@ -111,14 +111,14 @@ jobs:
           
           # Get tests
           if [ "$TEST_IDS" == "all" ]; then
-            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "student-crud")
+            TESTS=$(yq eval ".tests[] | select(.enabled == true) | select(.profiles[] == \"$PROFILE\") | .id" loadtests/manifest.yaml 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "student-enrollment")
           else
             TESTS="$TEST_IDS"
           fi
           
           # Fallback if no tests found
           if [ -z "$TESTS" ]; then
-            TESTS="student-crud"
+            TESTS="student-enrollment"
           fi
           
           echo "🧪 Tests to run: $TESTS"
@@ -136,7 +136,7 @@ jobs:
             TEST_COUNT=$((TEST_COUNT + 1))
             
             NAME=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .name // \"$TEST_ID\"" loadtests/manifest.yaml)
-            JMETER=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .jmeterFile // \"scenarios/student-crud.jmx\"" loadtests/manifest.yaml)
+            JMETER=$(yq eval ".tests[] | select(.id == \"$TEST_ID\") | .jmeterFile // \"scenarios/student-enrollment.jmx\"" loadtests/manifest.yaml)
             
             TEST_ARRAY+="{\"id\":\"$TEST_ID\",\"name\":\"$NAME\",\"jmeter\":\"$JMETER\"}"
           done
