@@ -3,7 +3,7 @@
 # Local Load Test Runner for Linux/Mac
 # =============================================================================
 # Usage: ./run-local.sh <test-id> <profile> [target-url]
-# Example: ./run-local.sh student-crud smoke http://localhost:5000
+# Example: ./run-local.sh student-enrollment smoke http://localhost:5000
 # =============================================================================
 
 set -e
@@ -32,7 +32,7 @@ if [ -z "$TEST_ID" ]; then
     echo "  target-url  - Target application URL (default: http://localhost:5000)"
     echo ""
     echo "Examples:"
-    echo "  ./run-local.sh student-crud smoke"
+    echo "  ./run-local.sh student-enrollment smoke"
     echo "  ./run-local.sh chaos-resilience chaos http://myapp.azurewebsites.net"
     exit 1
 fi

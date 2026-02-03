@@ -3,7 +3,7 @@
 # Local Load Test Runner for Windows
 # =============================================================================
 # Usage: .\run-local.ps1 -TestId <test-id> -Profile <profile> [-Url <target-url>]
-# Example: .\run-local.ps1 -TestId student-crud -Profile smoke -Url http://localhost:5000
+# Example: .\run-local.ps1 -TestId student-enrollment -Profile smoke -Url http://localhost:5000
 # =============================================================================
 
 param(

@@ -33,7 +33,7 @@ loadtests/
 │   ├── load.yaml             # 100 users, 5 min
 │   └── stress.yaml           # 500 users, 10 min
 └── scenarios/                 # Individual test scenarios
-    ├── student-crud.jmx
+    ├── student-enrollment.jmx
     ├── department-browse.jmx
     └── chaos-resilience.jmx
 ```
@@ -88,7 +88,7 @@ tests:
 .\run-local.ps1 -List
 
 # Run a specific test
-.\run-local.ps1 -TestId student-crud -Profile smoke
+.\run-local.ps1 -TestId student-enrollment -Profile smoke
 
 # Run against a custom URL
 .\run-local.ps1 -TestId contoso-baseline -Profile load -WebAppUrl "https://myapp.azurewebsites.net"
@@ -100,7 +100,7 @@ tests:
 ./run-local.sh --list
 
 # Run a specific test  
-./run-local.sh student-crud smoke
+./run-local.sh student-enrollment smoke
 
 # Run against a custom URL
 ./run-local.sh contoso-baseline load https://myapp.azurewebsites.net

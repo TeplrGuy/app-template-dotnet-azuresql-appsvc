@@ -140,3 +140,22 @@ Tell the user:
 1. **Run locally**: `cd loadtests && ./run-local.ps1 -TestId {test-id} -Profile smoke`
 2. **Commit & Push**: The pipeline will auto-discover the new test
 3. **Trigger manually**: Go to Actions → "Load Testing" → Run workflow → Select the test
+
+## 🗑️ Deleting a Test
+
+To delete a test, use the `@workspace /delete-load-test` prompt. This ensures ALL related files are updated:
+
+### Files Modified When Creating/Deleting Tests:
+| File | Purpose |
+|------|---------|
+| `loadtests/scenarios/{test-id}.jmx` | JMeter test plan |
+| `loadtests/scenarios/{test-id}-config.yaml` | Azure config |
+| `loadtests/manifest.yaml` | Test registry (pipeline reads this) |
+| `loadtests/config.yaml` | Default/fallback config |
+| `loadtests/README.md` | Documentation and examples |
+| `loadtests/run-local.ps1` | Windows local runner examples |
+| `loadtests/run-local.sh` | Linux/Mac local runner examples |
+| `.github/workflows/load-test.yml` | Pipeline fallback references |
+| `.github/workflows/resilience-pipeline.yml` | Pipeline test references |
+
+⚠️ **Important**: When deleting tests manually, ensure ALL these files are updated to prevent CI/CD failures!

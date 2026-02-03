@@ -10,7 +10,7 @@ testId: contoso-university-load-test
 displayName: Contoso University Load Test
 description: Load test for Contoso University - Tests key endpoints as deployment gate
 
-testPlan: scenarios/student-crud.jmx
+testPlan: scenarios/student-enrollment.jmx
 engineInstances: 1
 
 # =============================================================================
