@@ -44,8 +44,18 @@ profiles:
 # =============================================================================
 # Test Definitions - All tests use the shared template
 # =============================================================================
-tests: []
-  # No tests defined - use @workspace /generate-load-test to add tests
+tests:
+  - id: instructor-pagination
+    name: "Instructor Pagination Load Test"
+    description: "Tests instructor page pagination from page 2 to 19"
+    jmeterFile: templates/instructor-pagination-test.jmx
+    profiles:
+      - smoke
+      - load
+    enabled: true
+    tags:
+      - instructors
+      - pagination
 
 # =============================================================================
 # Default failure criteria (can be overridden per test)
