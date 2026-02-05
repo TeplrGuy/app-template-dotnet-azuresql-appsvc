@@ -276,6 +276,11 @@ jobs:
             APP_SERVICE_ID="${{ steps.discover.outputs.app_service_id }}"
             SQL_DB_ID="${{ steps.discover.outputs.sql_db_id }}"
             
+            # Chaos Studio supported regions (westus2 is NOT supported)
+            # Using 'westus' as the default chaos experiment location
+            CHAOS_LOCATION="westus"
+            echo "📍 Using Chaos Studio region: $CHAOS_LOCATION"
+            
             # Determine which template to deploy based on experiment name
             if [[ "$EXPERIMENT" == "sql-latency-experiment" ]]; then
               if [ -z "$SQL_DB_ID" ]; then
@@ -291,6 +296,7 @@ jobs:
                   experimentName="$EXPERIMENT" \
                   sqlDatabaseResourceId="$SQL_DB_ID" \
                   appServiceResourceId="$APP_SERVICE_ID" \
+                  location="$CHAOS_LOCATION" \
                 --name "chaos-sql-latency-$(date +%Y%m%d%H%M%S)"
                 
             elif [[ "$EXPERIMENT" == "cpu-pressure-experiment" ]]; then
@@ -301,6 +307,7 @@ jobs:
                 --parameters \
                   experimentName="$EXPERIMENT" \
                   appServiceResourceId="$APP_SERVICE_ID" \
+                  location="$CHAOS_LOCATION" \
                 --name "chaos-cpu-pressure-$(date +%Y%m%d%H%M%S)"
             else
               echo "❌ Unknown experiment type: $EXPERIMENT"
