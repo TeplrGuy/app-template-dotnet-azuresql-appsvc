@@ -201,6 +201,10 @@ jobs:
         id: discover
         run: |
           echo "🔍 Discovering Azure resource IDs..."
+          echo "📋 Environment variables:"
+          echo "  WEBAPP_NAME: ${{ env.WEBAPP_NAME }}"
+          echo "  RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}"
+          echo "  SQL_SERVER_NAME: '${{ env.SQL_SERVER_NAME }}'"
           
           # Get App Service Resource ID
           APP_SERVICE_ID=$(az webapp show \
@@ -215,27 +219,26 @@ jobs:
           echo "✅ App Service ID: $APP_SERVICE_ID"
           echo "app_service_id=$APP_SERVICE_ID" >> $GITHUB_OUTPUT
           
-          # Try to find SQL Server - first check if variable is set, otherwise auto-discover
-          SQL_SERVER="${{ env.SQL_SERVER_NAME }}"
+          # Always auto-discover SQL Server from resource group for reliability
+          echo "🔍 Discovering SQL Server in resource group: ${{ env.RESOURCE_GROUP }}"
           
-          if [ -z "$SQL_SERVER" ] || [ "$SQL_SERVER" == "" ]; then
-            echo "🔍 SQL_SERVER_NAME not set, auto-discovering SQL Server in resource group..."
-            SQL_SERVER=$(az sql server list \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "[0].name" -o tsv 2>/dev/null || echo "")
-            
-            if [ -z "$SQL_SERVER" ]; then
-              echo "⚠️ No SQL Server found in resource group: ${{ env.RESOURCE_GROUP }}"
-              echo "sql_db_id=" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            echo "✅ Auto-discovered SQL Server: $SQL_SERVER"
-          else
-            echo "📌 Using configured SQL Server: $SQL_SERVER"
+          SQL_SERVER=$(az sql server list \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "[0].name" -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$SQL_SERVER" ]; then
+            echo "⚠️ No SQL Server found in resource group: ${{ env.RESOURCE_GROUP }}"
+            echo "sql_db_id=" >> $GITHUB_OUTPUT
+            exit 0
           fi
+          echo "✅ Found SQL Server: $SQL_SERVER"
           
           # Get SQL Database Resource ID (find first non-master database on server)
           echo "🔍 Looking for databases on server: $SQL_SERVER"
+          
+          # First list all databases for debugging
+          echo "📋 All databases on server:"
+          az sql db list --server "$SQL_SERVER" --resource-group "${{ env.RESOURCE_GROUP }}" --query "[].name" -o tsv 2>/dev/null || echo "  (error listing databases)"
           
           SQL_DB_ID=$(az sql db list \
             --server "$SQL_SERVER" \
@@ -243,9 +246,7 @@ jobs:
             --query "[?name!='master'].id | [0]" -o tsv 2>/dev/null || echo "")
           
           if [ -z "$SQL_DB_ID" ]; then
-            echo "⚠️ Could not find SQL Database on server: $SQL_SERVER"
-            echo "💡 Available databases:"
-            az sql db list --server "$SQL_SERVER" --resource-group "${{ env.RESOURCE_GROUP }}" --query "[].name" -o tsv 2>/dev/null || echo "  (none found)"
+            echo "⚠️ Could not find non-master SQL Database on server: $SQL_SERVER"
             echo "sql_db_id=" >> $GITHUB_OUTPUT
           else
             echo "✅ SQL Database ID: $SQL_DB_ID"
