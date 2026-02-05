@@ -100,10 +100,8 @@ resource chaosExperiment 'Microsoft.Chaos/experiments@2023-11-01' = {
 // ============================================================================
 // Role Assignments for Chaos Experiment
 // ============================================================================
-// The experiment needs permissions to inject faults
-
-@description('Chaos Studio role ID for experiment execution')
-var chaosExperimentRoleId = 'e07e03f8-4c2a-4e4f-9c5e-8a8f4f4f4f4f' // Custom role or Contributor
+// The experiment needs Contributor permissions to inject faults
+// Requires the deploying identity to have Owner or User Access Administrator role
 
 resource sqlRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(chaosExperiment.id, sqlDatabaseResourceId, 'sql-chaos')

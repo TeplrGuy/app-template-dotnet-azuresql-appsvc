@@ -314,7 +314,7 @@ jobs:
               exit 1
             fi
             
-            echo "✅ Experiment deployed successfully"
+            echo "✅ Experiment deployed successfully (including role assignment)"
             echo "created=true" >> $GITHUB_OUTPUT
             
             # Wait for deployment to complete

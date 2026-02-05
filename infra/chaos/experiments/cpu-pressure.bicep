@@ -85,6 +85,9 @@ resource chaosExperiment 'Microsoft.Chaos/experiments@2023-11-01' = {
 // ============================================================================
 // Role Assignment
 // ============================================================================
+// The experiment needs Contributor permissions to inject faults
+// Requires the deploying identity to have Owner or User Access Administrator role
+
 resource appServiceRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(chaosExperiment.id, appServiceResourceId, 'appservice-chaos')
   scope: resourceGroup()
