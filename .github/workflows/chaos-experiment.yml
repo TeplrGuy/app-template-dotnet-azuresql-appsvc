@@ -33,6 +33,8 @@ on:
 env:
   # Base resource group (environment suffix added dynamically)
   AZURE_RESOURCE_GROUP_BASE: ${{ vars.AZURE_RESOURCE_GROUP }}
+  # SQL Server name (used for resource discovery)
+  AZURE_SQL_SERVER_NAME: ${{ vars.AZURE_SQL_SERVER_NAME }}
 
 # Required for OIDC federated authentication
 permissions:
@@ -48,6 +50,7 @@ jobs:
       webapp_url: ${{ steps.env-config.outputs.webapp_url }}
       resource_group: ${{ steps.env-config.outputs.resource_group }}
       env_suffix: ${{ steps.env-config.outputs.env_suffix }}
+      sql_server_name: ${{ steps.env-config.outputs.sql_server_name }}
     
     steps:
       - name: 🔧 Configure Environment-Specific Variables
@@ -81,15 +84,20 @@ jobs:
           WEBAPP_URL="https://${WEBAPP_NAME}.azurewebsites.net"
           RESOURCE_GROUP="${BASE_RG}"
           
+          # SQL Server naming (adjust to match your convention)
+          SQL_SERVER_NAME="${{ vars.AZURE_SQL_SERVER_NAME }}${SUFFIX}"
+          
           echo "webapp_name=${WEBAPP_NAME}" >> $GITHUB_OUTPUT
           echo "webapp_url=${WEBAPP_URL}" >> $GITHUB_OUTPUT
           echo "resource_group=${RESOURCE_GROUP}" >> $GITHUB_OUTPUT
           echo "env_suffix=${SUFFIX}" >> $GITHUB_OUTPUT
+          echo "sql_server_name=${SQL_SERVER_NAME}" >> $GITHUB_OUTPUT
           
           echo "✅ Environment configuration:"
           echo "  - Web App: $WEBAPP_NAME"
           echo "  - URL: $WEBAPP_URL"
           echo "  - Resource Group: $RESOURCE_GROUP"
+          echo "  - SQL Server: $SQL_SERVER_NAME"
 
   pre-chaos-validation:
     name: 🔍 Pre-Chaos Health Check
@@ -161,6 +169,7 @@ jobs:
       WEBAPP_NAME: ${{ needs.setup-environment.outputs.webapp_name }}
       WEBAPP_URL: ${{ needs.setup-environment.outputs.webapp_url }}
       RESOURCE_GROUP: ${{ needs.setup-environment.outputs.resource_group }}
+      SQL_SERVER_NAME: ${{ needs.setup-environment.outputs.sql_server_name }}
     
     steps:
       - name: 📥 Checkout code
@@ -181,7 +190,105 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 🚀 Start Background Load (Optional)
+      - name: � Install Azure Chaos Extension
+        run: |
+          echo "📦 Installing Azure Chaos Studio CLI extension..."
+          az extension add --name chaos --yes --allow-preview true
+          az extension show --name chaos
+
+      - name: 🔍 Discover Resource IDs
+        id: discover
+        run: |
+          echo "🔍 Discovering Azure resource IDs..."
+          
+          # Get App Service Resource ID
+          APP_SERVICE_ID=$(az webapp show \
+            --name "${{ env.WEBAPP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "id" -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$APP_SERVICE_ID" ]; then
+            echo "❌ Could not find App Service: ${{ env.WEBAPP_NAME }}"
+            exit 1
+          fi
+          echo "✅ App Service ID: $APP_SERVICE_ID"
+          echo "app_service_id=$APP_SERVICE_ID" >> $GITHUB_OUTPUT
+          
+          # Get SQL Database Resource ID (find first database on server)
+          SQL_DB_ID=$(az sql db list \
+            --server "${{ env.SQL_SERVER_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "[?name!='master'].id | [0]" -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$SQL_DB_ID" ]; then
+            echo "⚠️ Could not find SQL Database on server: ${{ env.SQL_SERVER_NAME }}"
+            echo "sql_db_id=" >> $GITHUB_OUTPUT
+          else
+            echo "✅ SQL Database ID: $SQL_DB_ID"
+            echo "sql_db_id=$SQL_DB_ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔧 Ensure Chaos Experiment Exists
+        id: ensure-experiment
+        run: |
+          EXPERIMENT="${{ inputs.experiment_name }}"
+          echo "🔍 Checking if experiment '$EXPERIMENT' exists..."
+          
+          # Check if experiment exists
+          EXISTS=$(az chaos experiment show \
+            --name "$EXPERIMENT" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "name" -o tsv 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTS" ]; then
+            echo "✅ Experiment '$EXPERIMENT' already exists"
+            echo "created=false" >> $GITHUB_OUTPUT
+          else
+            echo "📦 Experiment not found - deploying via Bicep..."
+            
+            APP_SERVICE_ID="${{ steps.discover.outputs.app_service_id }}"
+            SQL_DB_ID="${{ steps.discover.outputs.sql_db_id }}"
+            
+            # Determine which template to deploy based on experiment name
+            if [[ "$EXPERIMENT" == "sql-latency-experiment" ]]; then
+              if [ -z "$SQL_DB_ID" ]; then
+                echo "❌ SQL Database ID required for sql-latency-experiment"
+                exit 1
+              fi
+              
+              echo "🚀 Deploying SQL latency experiment..."
+              az deployment group create \
+                --resource-group "${{ env.RESOURCE_GROUP }}" \
+                --template-file infra/chaos/experiments/sql-latency.bicep \
+                --parameters \
+                  experimentName="$EXPERIMENT" \
+                  sqlDatabaseResourceId="$SQL_DB_ID" \
+                  appServiceResourceId="$APP_SERVICE_ID" \
+                --name "chaos-sql-latency-$(date +%Y%m%d%H%M%S)"
+                
+            elif [[ "$EXPERIMENT" == "cpu-pressure-experiment" ]]; then
+              echo "🚀 Deploying CPU pressure experiment..."
+              az deployment group create \
+                --resource-group "${{ env.RESOURCE_GROUP }}" \
+                --template-file infra/chaos/experiments/cpu-pressure.bicep \
+                --parameters \
+                  experimentName="$EXPERIMENT" \
+                  appServiceResourceId="$APP_SERVICE_ID" \
+                --name "chaos-cpu-pressure-$(date +%Y%m%d%H%M%S)"
+            else
+              echo "❌ Unknown experiment type: $EXPERIMENT"
+              exit 1
+            fi
+            
+            echo "✅ Experiment deployed successfully"
+            echo "created=true" >> $GITHUB_OUTPUT
+            
+            # Wait for deployment to complete
+            echo "⏳ Waiting 30 seconds for experiment to be ready..."
+            sleep 30
+          fi
+
+      - name: �🚀 Start Background Load (Optional)
         if: inputs.validate_with_load == true
         run: |
           echo "🚀 Starting background load to validate resilience..."
