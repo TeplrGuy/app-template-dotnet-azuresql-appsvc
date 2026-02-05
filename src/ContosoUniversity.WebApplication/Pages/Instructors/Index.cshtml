@@ -36,13 +36,13 @@
             {
                 <tr>
                     <td>
-                        @Html.DisplayFor(modelItem => item.LastName)
+                        @item.LastName
                     </td>
                     <td>
-                        @Html.DisplayFor(modelItem => item.FirstName)
+                        @item.FirstName
                     </td>
                     <td>
-                        @Html.DisplayFor(modelItem => item.HireDate)
+                        @item.HireDate.ToShortDateString()
                     </td>
                     <td>
                         <a asp-page="./Edit" asp-route-id="@item.ID">Edit</a> |
