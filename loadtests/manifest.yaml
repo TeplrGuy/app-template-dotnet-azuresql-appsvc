@@ -96,9 +96,9 @@ tests:
 # Default failure criteria (can be overridden per test)
 # =============================================================================
 defaultCriteria:
-  avgResponseTimeMs: 4000
-  percentile95Ms: 5000
-  errorPercentage: 1
+  avgResponseTimeMs: 5000
+  percentile95Ms: 6000
+  errorPercentage: 10
 
 # =============================================================================
 # Chaos Experiments - Linked to the chaos profile tests

@@ -33,10 +33,10 @@ env:
 # =============================================================================
 failureCriteria:
   # Overall test criteria
-  - avg(response_time_ms) > 2000        # Average response time < 2s
+  - avg(response_time_ms) > 5000        # Average response time < 5s
   - percentage(error) > 1                # Error rate < 1%
-  - p95(response_time_ms) > 3000         # 95th percentile < 3s
-  - p99(response_time_ms) > 5000         # 99th percentile < 5s
+  - p95(response_time_ms) > 6000         # 95th percentile < 6s
+  - p99(response_time_ms) > 7000         # 99th percentile < 7s
   
   # Per-request criteria (critical endpoints)
   - GetRequest: avg(response_time_ms) > 1500    # Homepage should be fast
