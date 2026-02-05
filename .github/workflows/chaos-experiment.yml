@@ -281,6 +281,24 @@ jobs:
             CHAOS_LOCATION="westus"
             echo "📍 Using Chaos Studio region: $CHAOS_LOCATION"
             
+            # Step 1: Enable Chaos targets on resources first
+            echo "🎯 Step 1: Enabling Chaos Studio targets on resources..."
+            az deployment group create \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --template-file infra/chaos/chaos-targets.bicep \
+              --parameters \
+                sqlDatabaseResourceId="$SQL_DB_ID" \
+                appServiceResourceId="$APP_SERVICE_ID" \
+              --name "chaos-targets-$(date +%Y%m%d%H%M%S)" || {
+                echo "⚠️ Chaos targets deployment failed (may already exist)"
+              }
+            
+            echo "⏳ Waiting 15 seconds for targets to be ready..."
+            sleep 15
+            
+            # Step 2: Deploy the experiment
+            echo "🔥 Step 2: Deploying chaos experiment..."
+            
             # Determine which template to deploy based on experiment name
             if [[ "$EXPERIMENT" == "sql-latency-experiment" ]]; then
               if [ -z "$SQL_DB_ID" ]; then

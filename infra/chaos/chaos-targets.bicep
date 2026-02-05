@@ -27,11 +27,22 @@ var sqlDatabaseName = split(sqlDatabaseResourceId, '/')[10]
 var appServiceName = split(appServiceResourceId, '/')[8]
 
 // ============================================================================
+// Reference existing resources
+// ============================================================================
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2022-05-01-preview' existing = {
+  name: '${sqlServerName}/${sqlDatabaseName}'
+}
+
+resource appService 'Microsoft.Web/sites@2022-09-01' existing = {
+  name: appServiceName
+}
+
+// ============================================================================
 // Enable Chaos Target on SQL Database
 // ============================================================================
 resource sqlChaosTarget 'Microsoft.Chaos/targets@2023-11-01' = {
   name: 'Microsoft-AzureSQLDatabase'
-  scope: resourceGroup()
+  scope: sqlDatabase
   properties: {}
 }
 
@@ -53,7 +64,7 @@ resource sqlDisconnectCapability 'Microsoft.Chaos/targets/capabilities@2023-11-0
 // ============================================================================
 resource appServiceChaosTarget 'Microsoft.Chaos/targets@2023-11-01' = {
   name: 'Microsoft-AppService'
-  scope: resourceGroup()
+  scope: appService
   properties: {}
 }
 
