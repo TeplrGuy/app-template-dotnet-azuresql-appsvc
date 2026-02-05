@@ -190,11 +190,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: � Install Azure Chaos Extension
-        run: |
-          echo "📦 Installing Azure Chaos Studio CLI extension..."
-          az extension add --name chaos --yes --allow-preview true
-          az extension show --name chaos
 
       - name: 🔍 Discover Resource IDs
         id: discover
@@ -232,13 +227,15 @@ jobs:
         id: ensure-experiment
         run: |
           EXPERIMENT="${{ inputs.experiment_name }}"
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ env.RESOURCE_GROUP }}"
+          
           echo "🔍 Checking if experiment '$EXPERIMENT' exists..."
           
-          # Check if experiment exists
-          EXISTS=$(az chaos experiment show \
-            --name "$EXPERIMENT" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "name" -o tsv 2>/dev/null || echo "")
+          # Check if experiment exists using REST API
+          EXPERIMENT_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}?api-version=2023-11-01"
+          
+          EXISTS=$(az rest --method get --uri "$EXPERIMENT_URI" --query "name" -o tsv 2>/dev/null || echo "")
           
           if [ -n "$EXISTS" ]; then
             echo "✅ Experiment '$EXPERIMENT' already exists"
@@ -301,21 +298,21 @@ jobs:
         id: chaos
         run: |
           EXPERIMENT="${{ inputs.experiment_name }}"
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ env.RESOURCE_GROUP }}"
           
           echo "🔥 Starting chaos experiment: $EXPERIMENT"
           echo "🎯 Environment: ${{ inputs.environment }}"
           echo "🎯 Resource Group: ${{ env.RESOURCE_GROUP }}"
           
-          # Start the experiment
-          az chaos experiment start \
-            --name "$EXPERIMENT" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --no-wait || {
-              echo "⚠️ Experiment start command failed - may need to create experiment first"
-              echo "See infra/chaos/ for Bicep templates"
-              exit 0
-            }
+          # Start the experiment using REST API
+          START_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}/start?api-version=2023-11-01"
+          
+          az rest --method post --uri "$START_URI" || {
+            echo "⚠️ Experiment start command failed - may need to create experiment first"
+            echo "See infra/chaos/ for Bicep templates"
+            exit 0
+          }
           
           echo "experiment_started=true" >> $GITHUB_OUTPUT
           echo "⏳ Experiment started, monitoring for ${{ inputs.duration_minutes }} minutes..."
@@ -325,9 +322,15 @@ jobs:
           DURATION_SECONDS=$((${{ inputs.duration_minutes }} * 60))
           INTERVAL=30
           ELAPSED=0
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ env.RESOURCE_GROUP }}"
+          EXPERIMENT="${{ inputs.experiment_name }}"
           
           echo "📊 Monitoring chaos experiment impact..."
           echo "🎯 Target: ${{ env.WEBAPP_URL }}"
+          
+          # Get experiment status URI
+          STATUS_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}?api-version=2023-11-01"
           
           while [ $ELAPSED -lt $DURATION_SECONDS ]; do
             echo "---"
@@ -342,11 +345,8 @@ jobs:
             echo "  HTTP Status: $http_code"
             echo "  Response Time: ${response_time}s"
             
-            # Check experiment status
-            status=$(az chaos experiment show \
-              --name "${{ inputs.experiment_name }}" \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "properties.executionStatus" -o tsv 2>/dev/null || echo "Unknown")
+            # Check experiment status using REST API
+            status=$(az rest --method get --uri "$STATUS_URI" --query "properties.provisioningState" -o tsv 2>/dev/null || echo "Unknown")
             
             echo "  Experiment Status: $status"
             
@@ -359,10 +359,14 @@ jobs:
         run: |
           echo "🛑 Ensuring experiment is stopped..."
           
-          az chaos experiment cancel \
-            --name "${{ inputs.experiment_name }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" 2>/dev/null || true
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ env.RESOURCE_GROUP }}"
+          EXPERIMENT="${{ inputs.experiment_name }}"
+          
+          # Cancel experiment using REST API
+          CANCEL_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}/cancel?api-version=2023-11-01"
+          
+          az rest --method post --uri "$CANCEL_URI" 2>/dev/null || true
           
           echo "✅ Experiment cleanup complete"
 
