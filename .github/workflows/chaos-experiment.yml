@@ -17,8 +17,8 @@ on:
         required: true
         type: choice
         options:
-          - sql-latency-experiment
-          - cpu-pressure-experiment
+          - sql-failover-experiment
+          - app-stop-experiment
       duration_minutes:
         description: 'Expected duration in minutes'
         required: false
@@ -300,33 +300,33 @@ jobs:
             echo "🔥 Step 2: Deploying chaos experiment..."
             
             # Determine which template to deploy based on experiment name
-            if [[ "$EXPERIMENT" == "sql-latency-experiment" ]]; then
+            if [[ "$EXPERIMENT" == "sql-failover-experiment" ]]; then
               if [ -z "$SQL_DB_ID" ]; then
-                echo "❌ SQL Database ID required for sql-latency-experiment"
+                echo "❌ SQL Database ID required for sql-failover-experiment"
                 exit 1
               fi
               
-              echo "🚀 Deploying SQL latency experiment..."
+              echo "🚀 Deploying SQL failover experiment..."
               az deployment group create \
                 --resource-group "${{ env.RESOURCE_GROUP }}" \
-                --template-file infra/chaos/experiments/sql-latency.bicep \
+                --template-file infra/chaos/experiments/sql-failover.bicep \
                 --parameters \
                   experimentName="$EXPERIMENT" \
                   sqlDatabaseResourceId="$SQL_DB_ID" \
                   appServiceResourceId="$APP_SERVICE_ID" \
                   location="$CHAOS_LOCATION" \
-                --name "chaos-sql-latency-$(date +%Y%m%d%H%M%S)"
+                --name "chaos-sql-failover-$(date +%Y%m%d%H%M%S)"
                 
-            elif [[ "$EXPERIMENT" == "cpu-pressure-experiment" ]]; then
-              echo "🚀 Deploying CPU pressure experiment..."
+            elif [[ "$EXPERIMENT" == "app-stop-experiment" ]]; then
+              echo "🚀 Deploying App Service stop experiment..."
               az deployment group create \
                 --resource-group "${{ env.RESOURCE_GROUP }}" \
-                --template-file infra/chaos/experiments/cpu-pressure.bicep \
+                --template-file infra/chaos/experiments/app-stop.bicep \
                 --parameters \
                   experimentName="$EXPERIMENT" \
                   appServiceResourceId="$APP_SERVICE_ID" \
                   location="$CHAOS_LOCATION" \
-                --name "chaos-cpu-pressure-$(date +%Y%m%d%H%M%S)"
+                --name "chaos-app-stop-$(date +%Y%m%d%H%M%S)"
             else
               echo "❌ Unknown experiment type: $EXPERIMENT"
               exit 1

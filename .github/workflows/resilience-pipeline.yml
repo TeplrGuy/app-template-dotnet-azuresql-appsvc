@@ -56,12 +56,11 @@ on:
       chaos_experiment:
         description: 'Chaos experiment type'
         required: false
-        default: 'sql-latency'
+        default: 'sql-failover'
         type: choice
         options:
-          - sql-latency
-          - cpu-pressure
-          - network-disconnect
+          - sql-failover
+          - app-stop
 
 env:
   DOTNET_VERSION: '6.0.x'
@@ -497,6 +496,50 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: � Discover Resource IDs
+        id: discover
+        run: |
+          echo "🔍 Discovering Azure resource IDs..."
+          
+          # Get App Service Resource ID
+          APP_SERVICE_ID=$(az webapp show \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "id" -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$APP_SERVICE_ID" ]; then
+            echo "❌ Could not find App Service: ${{ vars.AZURE_WEBAPP_NAME }}"
+            exit 1
+          fi
+          echo "✅ App Service ID: $APP_SERVICE_ID"
+          echo "app_service_id=$APP_SERVICE_ID" >> $GITHUB_OUTPUT
+          
+          # Auto-discover SQL Server in resource group
+          SQL_SERVER=$(az sql server list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[0].name" -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$SQL_SERVER" ]; then
+            echo "⚠️ No SQL Server found in resource group"
+            echo "sql_db_id=" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found SQL Server: $SQL_SERVER"
+            
+            # Get SQL Database ID
+            SQL_DB_ID=$(az sql db list \
+              --server "$SQL_SERVER" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --query "[?name!='master'].id | [0]" -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$SQL_DB_ID" ]; then
+              echo "✅ SQL Database ID: $SQL_DB_ID"
+              echo "sql_db_id=$SQL_DB_ID" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️ No SQL Database found"
+              echo "sql_db_id=" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: 📊 Record Baseline Metrics
         id: baseline
         run: |
@@ -513,23 +556,104 @@ jobs:
           echo "📈 Baseline avg response time: ${avg}s"
           echo "baseline_avg=$avg" >> $GITHUB_OUTPUT
 
+      - name: 🔧 Ensure Chaos Experiment Exists
+        id: ensure-experiment
+        run: |
+          EXPERIMENT="${{ github.event.inputs.chaos_experiment || 'sql-failover' }}-experiment"
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          
+          echo "🔍 Checking if experiment '$EXPERIMENT' exists..."
+          
+          # Check if experiment exists using REST API
+          EXPERIMENT_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}?api-version=2023-11-01"
+          
+          EXISTS=$(az rest --method get --uri "$EXPERIMENT_URI" --query "name" -o tsv 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTS" ]; then
+            echo "✅ Experiment '$EXPERIMENT' already exists"
+          else
+            echo "📦 Experiment not found - deploying via Bicep..."
+            
+            APP_SERVICE_ID="${{ steps.discover.outputs.app_service_id }}"
+            SQL_DB_ID="${{ steps.discover.outputs.sql_db_id }}"
+            
+            # Chaos Studio supported regions (westus2 is NOT supported)
+            CHAOS_LOCATION="westus"
+            echo "📍 Using Chaos Studio region: $CHAOS_LOCATION"
+            
+            # Step 1: Enable Chaos targets on resources first
+            echo "🎯 Step 1: Enabling Chaos Studio targets on resources..."
+            az deployment group create \
+              --resource-group "$RG" \
+              --template-file infra/chaos/chaos-targets.bicep \
+              --parameters \
+                sqlDatabaseResourceId="$SQL_DB_ID" \
+                appServiceResourceId="$APP_SERVICE_ID" \
+              --name "chaos-targets-$(date +%Y%m%d%H%M%S)" || {
+                echo "⚠️ Chaos targets deployment failed (may already exist)"
+              }
+            
+            echo "⏳ Waiting 15 seconds for targets to be ready..."
+            sleep 15
+            
+            # Step 2: Deploy the experiment
+            echo "🔥 Step 2: Deploying chaos experiment..."
+            
+            if [[ "$EXPERIMENT" == "sql-failover-experiment" ]]; then
+              if [ -z "$SQL_DB_ID" ]; then
+                echo "❌ SQL Database ID required for sql-failover-experiment"
+                exit 1
+              fi
+              
+              az deployment group create \
+                --resource-group "$RG" \
+                --template-file infra/chaos/experiments/sql-failover.bicep \
+                --parameters \
+                  experimentName="$EXPERIMENT" \
+                  sqlDatabaseResourceId="$SQL_DB_ID" \
+                  appServiceResourceId="$APP_SERVICE_ID" \
+                  location="$CHAOS_LOCATION" \
+                --name "chaos-sql-$(date +%Y%m%d%H%M%S)"
+                
+            elif [[ "$EXPERIMENT" == "app-stop-experiment" ]]; then
+              az deployment group create \
+                --resource-group "$RG" \
+                --template-file infra/chaos/experiments/app-stop.bicep \
+                --parameters \
+                  experimentName="$EXPERIMENT" \
+                  appServiceResourceId="$APP_SERVICE_ID" \
+                  location="$CHAOS_LOCATION" \
+                --name "chaos-app-$(date +%Y%m%d%H%M%S)"
+            fi
+            
+            echo "✅ Experiment deployed successfully"
+            echo "⏳ Waiting 30 seconds for experiment to be ready..."
+            sleep 30
+          fi
+          
+          echo "experiment_name=$EXPERIMENT" >> $GITHUB_OUTPUT
+
       - name: 🔥 Start Chaos Experiment
         id: chaos
         run: |
-          EXPERIMENT="${{ github.event.inputs.chaos_experiment || 'sql-latency' }}"
+          EXPERIMENT="${{ steps.ensure-experiment.outputs.experiment_name }}"
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          
           echo "🔥 Starting chaos experiment: $EXPERIMENT"
           
-          az chaos experiment start \
-            --name "${EXPERIMENT}-experiment" \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }} || {
-              echo "⚠️ Experiment not found or failed to start"
-              echo "experiment_started=false" >> $GITHUB_OUTPUT
-              exit 0
-            }
+          # Start the experiment using REST API
+          START_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}/start?api-version=2023-11-01"
+          
+          az rest --method post --uri "$START_URI" || {
+            echo "⚠️ Experiment start command failed"
+            echo "experiment_started=false" >> $GITHUB_OUTPUT
+            exit 0
+          }
           
           echo "experiment_started=true" >> $GITHUB_OUTPUT
-          echo "experiment_name=${EXPERIMENT}-experiment" >> $GITHUB_OUTPUT
+          echo "✅ Experiment started!"
 
       - name: ⏳ Monitor During Chaos
         if: steps.chaos.outputs.experiment_started == 'true'
@@ -569,10 +693,16 @@ jobs:
         if: always() && steps.chaos.outputs.experiment_started == 'true'
         run: |
           echo "🛑 Stopping chaos experiment..."
-          az chaos experiment cancel \
-            --name "${{ steps.chaos.outputs.experiment_name }}" \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }} || true
+          
+          EXPERIMENT="${{ steps.ensure-experiment.outputs.experiment_name }}"
+          SUBSCRIPTION="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          
+          # Cancel experiment using REST API
+          CANCEL_URI="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Chaos/experiments/${EXPERIMENT}/cancel?api-version=2023-11-01"
+          
+          az rest --method post --uri "$CANCEL_URI" 2>/dev/null || true
+          echo "✅ Experiment cleanup complete"
 
       - name: 📊 Validate Recovery
         run: |

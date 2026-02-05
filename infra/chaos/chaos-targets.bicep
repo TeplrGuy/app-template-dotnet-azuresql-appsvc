@@ -5,6 +5,10 @@
 // fault injection experiments.
 //
 // Run this BEFORE creating experiments to ensure targets are registered.
+//
+// Supported Service-Direct Faults:
+// - SQL Database: Failover
+// - App Service: Stop
 // ============================================================================
 
 @description('Resource ID of the Azure SQL Database')
@@ -12,12 +16,6 @@ param sqlDatabaseResourceId string
 
 @description('Resource ID of the App Service')
 param appServiceResourceId string
-
-@description('Tags for resources')
-param tags object = {
-  purpose: 'chaos-engineering'
-  application: 'contoso-university'
-}
 
 // ============================================================================
 // Extract resource names from resource IDs
@@ -48,15 +46,11 @@ resource sqlChaosTarget 'Microsoft.Chaos/targets@2023-11-01' = {
 
 // ============================================================================
 // Enable Capabilities on SQL Database Target
+// Service-direct fault: Failover (triggers a database failover)
 // ============================================================================
-resource sqlLatencyCapability 'Microsoft.Chaos/targets/capabilities@2023-11-01' = {
+resource sqlFailoverCapability 'Microsoft.Chaos/targets/capabilities@2023-11-01' = {
   parent: sqlChaosTarget
-  name: 'NetworkLatency-1.0'
-}
-
-resource sqlDisconnectCapability 'Microsoft.Chaos/targets/capabilities@2023-11-01' = {
-  parent: sqlChaosTarget
-  name: 'NetworkDisconnect-1.0'
+  name: 'Failover-1.0'
 }
 
 // ============================================================================
@@ -70,15 +64,11 @@ resource appServiceChaosTarget 'Microsoft.Chaos/targets@2023-11-01' = {
 
 // ============================================================================
 // Enable Capabilities on App Service Target
+// Service-direct fault: Stop (stops the app service)
 // ============================================================================
-resource cpuPressureCapability 'Microsoft.Chaos/targets/capabilities@2023-11-01' = {
+resource appServiceStopCapability 'Microsoft.Chaos/targets/capabilities@2023-11-01' = {
   parent: appServiceChaosTarget
-  name: 'CpuPressure-1.0'
-}
-
-resource memoryPressureCapability 'Microsoft.Chaos/targets/capabilities@2023-11-01' = {
-  parent: appServiceChaosTarget
-  name: 'MemoryPressure-1.0'
+  name: 'Stop-1.0'
 }
 
 // ============================================================================
