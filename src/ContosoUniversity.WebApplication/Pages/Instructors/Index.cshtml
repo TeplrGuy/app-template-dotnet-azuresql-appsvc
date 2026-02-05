@@ -36,10 +36,10 @@
             {
                 <tr>
                     <td>
-                        @item.LastName
+                        @(item.LastName ?? string.Empty)
                     </td>
                     <td>
-                        @item.FirstName
+                        @(item.FirstName ?? string.Empty)
                     </td>
                     <td>
                         @item.HireDate.ToShortDateString()
