@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using ContosoUniversity.API.Data;
@@ -23,7 +23,8 @@ namespace ContosoUniversity.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetInstructors(int? page)
         {
-            var instructors = _context.Instructors;
+            var instructors = _context.Instructors
+                .AsNoTracking();
 
             int pageNumber = page.HasValue && page.Value > 0 ? page.Value - 1 : 0; // 0-index
             int pageSize = 50;
@@ -60,7 +61,7 @@ namespace ContosoUniversity.API.Controllers
                 return BadRequest(ModelState);
             }
 
-            var instructor = await _context.Instructors.FindAsync(id);
+            var instructor = await _context.Instructors.AsNoTracking().FindAsync(id);
 
             if (instructor == null)
             {
