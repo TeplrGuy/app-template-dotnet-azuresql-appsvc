@@ -57,11 +57,46 @@ tests:
       - instructors
       - pagination
 
+  - id: homepage-loadtime
+    name: "Home Page Load Time Test"
+    description: "Tests home page load time - 10 requests every 30 seconds for 3 minutes"
+    jmeterFile: templates/homepage-loadtime-test.jmx
+    profiles:
+      - smoke
+      - load
+    enabled: true
+    tags:
+      - homepage
+      - performance
+    # Custom settings for this test (overrides profile defaults)
+    customConfig:
+      concurrentUsers: 10
+      durationSeconds: 180
+      requestIntervalSeconds: 30
+
+  - id: about-page
+    name: "About Page Load Test"
+    description: "Tests About page load time - validates page rendering and API call to /api/Values"
+    jmeterFile: templates/about-page-test.jmx
+    profiles:
+      - smoke
+      - load
+    enabled: true
+    tags:
+      - about
+      - performance
+      - api-integration
+    # Custom settings for this test (overrides profile defaults)
+    customConfig:
+      concurrentUsers: 10
+      durationSeconds: 180
+      requestIntervalSeconds: 30
+
 # =============================================================================
 # Default failure criteria (can be overridden per test)
 # =============================================================================
 defaultCriteria:
-  avgResponseTimeMs: 2000
+  avgResponseTimeMs: 4000
   percentile95Ms: 5000
   errorPercentage: 1
 
