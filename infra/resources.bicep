@@ -776,12 +776,13 @@ module sreAgentModule 'sre-agent/sre-agent.bicep' = if (enableSreAgent) {
     webAppId: webApp.id
     apiAppId: apiApp.id
     githubRepoUrl: githubRepoUrl
+    deployRbacAssignments: deployRbacAssignments
     tags: union(tags, { purpose: 'sre-automation' })
   }
 }
 
 // Deploy role assignments granting the SRE Agent access to monitored resources
-module sreAgentRoles 'sre-agent/role-assignments.bicep' = if (enableSreAgent) {
+module sreAgentRoles 'sre-agent/role-assignments.bicep' = if (enableSreAgent && deployRbacAssignments) {
   name: 'sre-agent-roles-${uniqueString(deployment().name)}'
   params: {
     userAssignedIdentityPrincipalId: sreAgentModule!.outputs.userAssignedIdentityPrincipalId

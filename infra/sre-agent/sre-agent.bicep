@@ -57,6 +57,9 @@ param githubRepoUrl string = ''
 @description('Optional: Resource ID of an existing user-assigned managed identity. If empty, a new one is created.')
 param existingManagedIdentityId string = ''
 
+@description('Deploy RBAC role assignments (requires Owner or User Access Administrator role)')
+param deployRbacAssignments bool = false
+
 @description('Tags to apply to the SRE Agent resources')
 param tags object = {}
 
@@ -146,7 +149,7 @@ resource sreAgent 'Microsoft.App/agents@2025-05-01-preview' = {
 // Grants the deployer SRE Agent Administrator access so they can manage the
 // agent through the portal, configure workflows, and upload knowledge base docs.
 
-resource sreAgentAdminRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource sreAgentAdminRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployRbacAssignments) {
   name: guid(sreAgent.id, deployer().objectId, 'e79298df-d852-4c6d-84f9-5d13249d1e55')
   scope: sreAgent
   properties: {

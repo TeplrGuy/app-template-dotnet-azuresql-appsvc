@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "570631030815188533"
+      "templateHash": "414174933426364159"
     }
   },
   "parameters": {
@@ -209,7 +209,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "9183159696912767822"
+              "templateHash": "10576248306850112468"
             }
           },
           "parameters": {
@@ -1040,6 +1040,9 @@
                   "githubRepoUrl": {
                     "value": "[parameters('githubRepoUrl')]"
                   },
+                  "deployRbacAssignments": {
+                    "value": "[parameters('deployRbacAssignments')]"
+                  },
                   "tags": {
                     "value": "[union(variables('tags'), createObject('purpose', 'sre-automation'))]"
                   }
@@ -1051,7 +1054,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.39.26.7824",
-                      "templateHash": "8630285722852711806"
+                      "templateHash": "6983502291567728240"
                     }
                   },
                   "parameters": {
@@ -1147,6 +1150,13 @@
                         "description": "Optional: Resource ID of an existing user-assigned managed identity. If empty, a new one is created."
                       }
                     },
+                    "deployRbacAssignments": {
+                      "type": "bool",
+                      "defaultValue": false,
+                      "metadata": {
+                        "description": "Deploy RBAC role assignments (requires Owner or User Access Administrator role)"
+                      }
+                    },
                     "tags": {
                       "type": "object",
                       "defaultValue": {},
@@ -1207,6 +1217,7 @@
                       ]
                     },
                     {
+                      "condition": "[parameters('deployRbacAssignments')]",
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
                       "scope": "[format('Microsoft.App/agents/{0}', parameters('agentName'))]",
@@ -1257,7 +1268,7 @@
               ]
             },
             {
-              "condition": "[parameters('enableSreAgent')]",
+              "condition": "[and(parameters('enableSreAgent'), parameters('deployRbacAssignments'))]",
               "type": "Microsoft.Resources/deployments",
               "apiVersion": "2025-04-01",
               "name": "[format('sre-agent-roles-{0}', uniqueString(deployment().name))]",
