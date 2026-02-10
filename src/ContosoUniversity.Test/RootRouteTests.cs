@@ -1,0 +1,22 @@
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Net;
+using System.Threading.Tasks;
+
+namespace ContosoUniversity.Test
+{
+    [TestClass]
+    public class RootRouteTests
+    {
+        [TestMethod]
+        public async Task Get_Root_Should_Return_OK()
+        {
+            using var factory = new WebApplicationFactory<Program>();
+            var client = factory.CreateClient();
+
+            var response = await client.GetAsync("/");
+
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
+}
