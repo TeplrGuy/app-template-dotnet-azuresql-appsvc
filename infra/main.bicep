@@ -123,5 +123,7 @@ output AZURE_APPINSIGHTS_NAME string = resources.outputs.appInsightsName
 output AZURE_LOAD_TEST_RESOURCE string = resources.outputs.loadTestingName
 output AZURE_SRE_AGENT_NAME string = resources.outputs.sreAgentName
 output AZURE_SRE_AGENT_MODE string = resources.outputs.sreAgentMode
+output AZURE_SRE_AGENT_ID string = resources.outputs.sreAgentId
+output AZURE_SRE_AGENT_PORTAL_URL string = resources.outputs.sreAgentPortalUrl
 output AZURE_WEBAPP_URL string = resources.outputs.webUri
 output AZURE_API_URL string = resources.outputs.apiUri

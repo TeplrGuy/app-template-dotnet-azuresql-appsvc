@@ -60,7 +60,7 @@ env:
   # SRE Agent Configuration (disabled by default - requires Owner role for RBAC)
   ENABLE_SRE_AGENT: ${{ vars.ENABLE_SRE_AGENT || 'false' }}
   SRE_AGENT_MODE: ${{ vars.SRE_AGENT_MODE || 'Review' }}
-  GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+  GITHUB_REPO_URL: ${{ vars.GITHUB_REPO_URL || 'https://github.com/TeplrGuy/app-template-dotnet-azuresql-appsvc' }}
 
 jobs:
   # ===========================================================================
@@ -1025,9 +1025,225 @@ jobs:
   # ===========================================================================
   # VERIFY DEPLOYMENT (Configuration is done via Bicep + Key Vault)
   # ===========================================================================
+  # ===========================================================================
+  # CONFIGURE SRE AGENT
+  # ===========================================================================
+  # Uploads knowledge base documents (skills, subagents) and configures
+  # the GitHub connection for the SRE Agent. Only runs when ENABLE_SRE_AGENT=true.
+  # ===========================================================================
+  configure-sre-agent:
+    name: 🤖 Configure SRE Agent
+    needs: [deploy-infra]
+    if: |
+      always() && 
+      needs.deploy-infra.result == 'success' && 
+      contains(fromJSON('["true","True","TRUE"]'), vars.ENABLE_SRE_AGENT || 'false')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        continue-on-error: true
+        id: oidc-login-sre
+
+      - name: 🔐 Azure Login (Service Principal Fallback)
+        if: steps.oidc-login-sre.outcome == 'failure'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🔍 Verify SRE Agent Deployment
+        id: verify-sre
+        run: |
+          echo "🤖 Verifying SRE Agent deployment..."
+          SRE_NAME="sre-${{ env.ENVIRONMENT_NAME }}"
+          RG="${{ env.RESOURCE_GROUP }}"
+
+          if az resource show --resource-group "$RG" \
+            --resource-type "Microsoft.App/agents" \
+            --name "$SRE_NAME" &>/dev/null 2>&1; then
+            echo "✅ SRE Agent '$SRE_NAME' found in resource group '$RG'"
+            echo "sre_exists=true" >> $GITHUB_OUTPUT
+
+            # Get the agent resource ID
+            SRE_ID=$(az resource show --resource-group "$RG" \
+              --resource-type "Microsoft.App/agents" \
+              --name "$SRE_NAME" --query id -o tsv)
+            echo "sre_id=$SRE_ID" >> $GITHUB_OUTPUT
+            echo "  Resource ID: $SRE_ID"
+          else
+            echo "❌ SRE Agent '$SRE_NAME' not found"
+            echo "sre_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📚 Upload Knowledge Base Documents
+        if: steps.verify-sre.outputs.sre_exists == 'true'
+        run: |
+          echo "📚 Uploading knowledge base documents to SRE Agent..."
+          SRE_NAME="sre-${{ env.ENVIRONMENT_NAME }}"
+          RG="${{ env.RESOURCE_GROUP }}"
+          SRE_ID="${{ steps.verify-sre.outputs.sre_id }}"
+          UPLOAD_COUNT=0
+          FAIL_COUNT=0
+
+          # Function to upload a knowledge document via Azure REST API
+          upload_document() {
+            local file_path="$1"
+            local doc_name="$2"
+            local category="$3"
+
+            if [ ! -f "$file_path" ]; then
+              echo "  ⚠️ File not found: $file_path"
+              return 1
+            fi
+
+            echo "  📄 Uploading: $doc_name ($category)"
+            local content
+            content=$(cat "$file_path")
+
+            # Upload via Azure REST API to the SRE Agent knowledge store
+            local response
+            response=$(az rest --method PUT \
+              --url "https://management.azure.com${SRE_ID}/knowledgeDocuments/${doc_name}?api-version=2025-05-01-preview" \
+              --body "{
+                \"properties\": {
+                  \"content\": $(echo "$content" | jq -Rs .),
+                  \"category\": \"$category\",
+                  \"description\": \"$doc_name - $category document for Contoso University SRE\"
+                }
+              }" 2>&1) && {
+                echo "    ✅ Uploaded successfully"
+                UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
+              } || {
+                echo "    ⚠️ Upload failed (may need portal upload): $response"
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+              }
+          }
+
+          echo ""
+          echo "=== Skills ==="
+          upload_document "docs/sre-agent/skills/analyze-telemetry.md" "analyze-telemetry" "skill"
+          upload_document "docs/sre-agent/skills/create-github-pr.md" "create-github-pr" "skill"
+          upload_document "docs/sre-agent/skills/execute-azure-cli.md" "execute-azure-cli" "skill"
+          upload_document "docs/sre-agent/skills/run-load-test.md" "run-load-test" "skill"
+
+          echo ""
+          echo "=== Subagents ==="
+          upload_document "docs/sre-agent/subagents/incident-triage-subagent.md" "incident-triage-subagent" "subagent"
+          upload_document "docs/sre-agent/subagents/database-remediation-subagent.md" "database-remediation-subagent" "subagent"
+          upload_document "docs/sre-agent/subagents/appservice-remediation-subagent.md" "appservice-remediation-subagent" "subagent"
+          upload_document "docs/sre-agent/subagents/performance-optimization-subagent.md" "performance-optimization-subagent" "subagent"
+          upload_document "docs/sre-agent/subagents/code-remediation-subagent.md" "code-remediation-subagent" "subagent"
+
+          echo ""
+          echo "=== Knowledge Base ==="
+          upload_document "docs/SRE-KNOWLEDGE-BASE.md" "sre-knowledge-base" "runbook"
+
+          echo ""
+          echo "📊 Upload Summary: $UPLOAD_COUNT succeeded, $FAIL_COUNT failed"
+          if [ "$FAIL_COUNT" -gt 0 ]; then
+            echo "⚠️ Some uploads failed. You can manually upload these via the SRE Agent portal at https://sre.azure.com"
+          fi
+
+      - name: 🔗 Configure GitHub Connection
+        if: steps.verify-sre.outputs.sre_exists == 'true'
+        env:
+          GITHUB_PAT: ${{ secrets.SRE_GITHUB_PAT }}
+        run: |
+          echo "🔗 Configuring GitHub connection for SRE Agent..."
+          SRE_NAME="sre-${{ env.ENVIRONMENT_NAME }}"
+          RG="${{ env.RESOURCE_GROUP }}"
+          SRE_ID="${{ steps.verify-sre.outputs.sre_id }}"
+          REPO_URL="${{ env.GITHUB_REPO_URL }}"
+
+          if [ -z "$GITHUB_PAT" ]; then
+            echo "⚠️ SRE_GITHUB_PAT secret not configured."
+            echo "   To enable GitHub integration, add a repository secret named 'SRE_GITHUB_PAT'"
+            echo "   with a GitHub Personal Access Token that has 'repo' scope."
+            echo ""
+            echo "   You can also configure this manually in the SRE Agent portal:"
+            echo "   https://sre.azure.com"
+            exit 0
+          fi
+
+          echo "  Repository: $REPO_URL"
+          echo "  Frontend project: ContosoUniversity.WebApplication"
+          echo "  Backend project:  ContosoUniversity.API"
+
+          # Configure GitHub data connector via Azure REST API
+          az rest --method PUT \
+            --url "https://management.azure.com${SRE_ID}/dataConnectors/github-connector?api-version=2025-05-01-preview" \
+            --body "{
+              \"properties\": {
+                \"connectorType\": \"GitHub\",
+                \"gitHubConfiguration\": {
+                  \"repositoryUrl\": \"$REPO_URL\",
+                  \"personalAccessToken\": \"$GITHUB_PAT\",
+                  \"monitoredPaths\": [
+                    \"src/ContosoUniversity.WebApplication\",
+                    \"src/ContosoUniversity.API\",
+                    \"src/ContosoUniversity.Test\",
+                    \"infra\"
+                  ]
+                }
+              }
+            }" && {
+              echo "✅ GitHub connection configured successfully"
+              echo "   The SRE Agent can now:"
+              echo "   - Search code for root cause analysis"
+              echo "   - Create PRs with remediation fixes"
+              echo "   - Monitor both frontend and backend projects"
+            } || {
+              echo "⚠️ GitHub connector setup failed via REST API."
+              echo "   This may require manual configuration in the SRE Agent portal."
+              echo "   Navigate to: https://sre.azure.com → Select agent → Data Connectors → Add GitHub"
+            }
+
+      - name: 📋 SRE Agent Configuration Summary
+        if: steps.verify-sre.outputs.sre_exists == 'true'
+        run: |
+          echo "## 🤖 SRE Agent Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent Name | sre-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mode | ${{ env.SRE_AGENT_MODE }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Repo | ${{ env.GITHUB_REPO_URL }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Portal | [Open SRE Agent](https://sre.azure.com) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📚 Knowledge Base Documents" >> $GITHUB_STEP_SUMMARY
+          echo "| Document | Type |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| analyze-telemetry | Skill |" >> $GITHUB_STEP_SUMMARY
+          echo "| create-github-pr | Skill |" >> $GITHUB_STEP_SUMMARY
+          echo "| execute-azure-cli | Skill |" >> $GITHUB_STEP_SUMMARY
+          echo "| run-load-test | Skill |" >> $GITHUB_STEP_SUMMARY
+          echo "| incident-triage-subagent | Subagent |" >> $GITHUB_STEP_SUMMARY
+          echo "| database-remediation-subagent | Subagent |" >> $GITHUB_STEP_SUMMARY
+          echo "| appservice-remediation-subagent | Subagent |" >> $GITHUB_STEP_SUMMARY
+          echo "| performance-optimization-subagent | Subagent |" >> $GITHUB_STEP_SUMMARY
+          echo "| code-remediation-subagent | Subagent |" >> $GITHUB_STEP_SUMMARY
+          echo "| sre-knowledge-base | Runbook |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🏗️ Monitored Applications" >> $GITHUB_STEP_SUMMARY
+          echo "| App | Type | Name |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | Web App (MVC) | ${{ env.WEBAPP_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | API App | ${{ env.API_NAME }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # VERIFY DEPLOYMENT
+  # ===========================================================================
   verify-deployment:
     name: ✅ Verify Deployment
-    needs: [validate, deploy-infra, configure-slots]
+    needs: [validate, deploy-infra, configure-slots, configure-sre-agent]
     if: always() && needs.validate.result == 'success' && needs.deploy-infra.result == 'success'
     runs-on: ubuntu-latest
     
@@ -1113,6 +1329,9 @@ jobs:
           echo "| API App | ${{ env.API_NAME }} |" >> $GITHUB_STEP_SUMMARY
           echo "| App Insights | appi-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Load Testing | lt-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ env.ENABLE_SRE_AGENT }}" == "true" ]; then
+            echo "| SRE Agent | sre-${{ env.ENVIRONMENT_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔐 Configuration:" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ SQL connection string stored in Key Vault" >> $GITHUB_STEP_SUMMARY

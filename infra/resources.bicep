@@ -738,7 +738,13 @@ resource loadTesting 'Microsoft.LoadTestService/loadTests@2022-12-01' = {
 // Azure SRE Agent (Preview)
 // =============================================================================
 // The SRE Agent provides AI-powered incident detection, root cause analysis,
-// and automated remediation suggestions integrated with GitHub.
+// and automated remediation integrated with GitHub. Deployed as a dedicated
+// module following the official microsoft/sre-agent Bicep pattern with
+// UserAssigned + SystemAssigned identity, knowledge graph, and action config.
+//
+// Monitors both:
+//   - Frontend: Contoso University Web App (MVC)
+//   - Backend:  Contoso University API
 // =============================================================================
 
 @description('Enable Azure SRE Agent for automated incident response')
@@ -751,75 +757,40 @@ param sreAgentMode string = 'Review'
 @description('GitHub repository URL for SRE Agent code integration (e.g., https://github.com/owner/repo)')
 param githubRepoUrl string = ''
 
-// SRE Agent is only available in limited regions (swedencentral, eastus2, australiaeast)
-// Use eastus2 as default since it's closest to most US deployments
+// SRE Agent is only available in limited preview regions
+// (swedencentral, eastus2, australiaeast, uksouth)
 var sreAgentLocation = 'eastus2'
 
-resource sreAgent 'Microsoft.App/agents@2025-05-01-preview' = if (enableSreAgent) {
-  name: sreAgentName
-  location: sreAgentLocation
-  tags: union(tags, { purpose: 'sre-automation', monitoredResources: location })
-  identity: {
-    type: 'SystemAssigned'
-  }
-  properties: {
-    agentMode: sreAgentMode
+// Deploy the SRE Agent resource with managed identity and telemetry configuration
+module sreAgentModule 'sre-agent/sre-agent.bicep' = if (enableSreAgent) {
+  name: 'sre-agent-${uniqueString(deployment().name)}'
+  params: {
+    agentName: sreAgentName
+    location: sreAgentLocation
     accessLevel: 'High'
+    agentMode: sreAgentMode
+    appInsightsId: appInsights.id
+    appInsightsAppId: appInsights.properties.AppId
+    appInsightsConnectionString: appInsights.properties.ConnectionString
+    logAnalyticsWorkspaceId: logAnalytics.id
+    webAppId: webApp.id
+    apiAppId: apiApp.id
+    githubRepoUrl: githubRepoUrl
+    tags: union(tags, { purpose: 'sre-automation' })
   }
 }
 
-// SRE Agent - Application Insights Data Connector
-// Connects the agent to App Insights for telemetry analysis
-resource sreAgentAppInsightsConnector 'Microsoft.App/agents/dataConnectors@2025-05-01-preview' = if (enableSreAgent) {
-  parent: sreAgent
-  name: 'appinsights-connector'
-  properties: {
-    connectorType: 'ApplicationInsights'
-    targetResourceId: appInsights.id
-  }
-}
-
-// SRE Agent - Log Analytics Data Connector
-// Connects the agent to Log Analytics for log analysis
-resource sreAgentLogAnalyticsConnector 'Microsoft.App/agents/dataConnectors@2025-05-01-preview' = if (enableSreAgent) {
-  parent: sreAgent
-  name: 'loganalytics-connector'
-  properties: {
-    connectorType: 'LogAnalytics'
-    targetResourceId: logAnalytics.id
-  }
-}
-
-// SRE Agent needs Reader access to monitored resources
-var readerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
-
-resource sreAgentApiReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSreAgent) {
-  name: guid(apiApp.id, sreAgent.id, readerRoleId)
-  scope: apiApp
-  properties: {
-    principalId: sreAgent.identity.principalId
-    roleDefinitionId: readerRoleId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource sreAgentWebReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSreAgent) {
-  name: guid(webApp.id, sreAgent.id, readerRoleId)
-  scope: webApp
-  properties: {
-    principalId: sreAgent.identity.principalId
-    roleDefinitionId: readerRoleId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource sreAgentAppInsightsReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableSreAgent) {
-  name: guid(appInsights.id, sreAgent.id, readerRoleId)
-  scope: appInsights
-  properties: {
-    principalId: sreAgent.identity.principalId
-    roleDefinitionId: readerRoleId
-    principalType: 'ServicePrincipal'
+// Deploy role assignments granting the SRE Agent access to monitored resources
+module sreAgentRoles 'sre-agent/role-assignments.bicep' = if (enableSreAgent) {
+  name: 'sre-agent-roles-${uniqueString(deployment().name)}'
+  params: {
+    userAssignedIdentityPrincipalId: sreAgentModule!.outputs.userAssignedIdentityPrincipalId
+    systemAssignedIdentityPrincipalId: sreAgentModule!.outputs.sreAgentPrincipalId
+    accessLevel: 'High'
+    webAppId: webApp.id
+    apiAppId: apiApp.id
+    appInsightsId: appInsights.id
+    logAnalyticsId: logAnalytics.id
   }
 }
 
@@ -834,8 +805,10 @@ output keyVaultName string = keyVault.name
 output keyVaultEndpoint string = keyVault.properties.vaultUri
 output appInsightsName string = appInsights.name
 output loadTestingName string = loadTesting.name
-output sreAgentName string = enableSreAgent ? sreAgent.name : ''
+output sreAgentName string = enableSreAgent ? sreAgentModule!.outputs.sreAgentName : ''
 output sreAgentMode string = sreAgentMode
+output sreAgentId string = enableSreAgent ? sreAgentModule!.outputs.sreAgentId : ''
+output sreAgentPortalUrl string = enableSreAgent ? sreAgentModule!.outputs.sreAgentPortalUrl : ''
 output webUri string = 'https://${webApp.properties.defaultHostName}'
 output apiUri string = 'https://${apiApp.properties.defaultHostName}'
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
