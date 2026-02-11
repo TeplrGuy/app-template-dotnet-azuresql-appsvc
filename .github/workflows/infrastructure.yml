@@ -1001,7 +1001,21 @@ jobs:
             echo "✅ App settings configured for $WEB/$SLOT (Api: $API_URL)"
           done
 
-      - name: 📋 Slot Configuration Summary
+      - name: � Mark Api__Address as Sticky Slot Setting
+        run: |
+          RG="${{ env.RESOURCE_GROUP }}"
+          WEB="${{ env.WEBAPP_NAME }}"
+          
+          echo "📌 Marking Api__Address as a sticky slot setting on $WEB..."
+          echo "   This ensures each slot keeps its own API endpoint during swap."
+          
+          az webapp config appsettings set -g "$RG" -n "$WEB" \
+            --slot-settings "Api__Address=https://${{ env.API_NAME }}.azurewebsites.net" \
+            --output none
+          
+          echo "✅ Api__Address is now a sticky (slot-specific) setting on $WEB"
+
+      - name: �📋 Slot Configuration Summary
         run: |
           echo "## 🎰 Deployment Slots Configured" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

@@ -250,6 +250,23 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
 }
 
 // =============================================================================
+// Sticky Slot Settings (Settings that stay with the slot during swap)
+// =============================================================================
+// Mark Api__Address as a slot-specific (sticky) setting so that each slot
+// retains its own API endpoint URL during a staging-to-production swap.
+// Without this, the staging Api__Address value travels with the swapped code
+// into production, causing 500 errors.
+resource webAppSlotConfigNames 'Microsoft.Web/sites/config@2022-09-01' = {
+  parent: webApp
+  name: 'slotConfigNames'
+  properties: {
+    appSettingNames: [
+      'Api__Address'
+    ]
+  }
+}
+
+// =============================================================================
 // API App (Web API Backend)
 // =============================================================================
 resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
