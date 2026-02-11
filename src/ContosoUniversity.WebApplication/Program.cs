@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -8,12 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
-    // This lambda determines whether user consent for non-essential cookies is needed for a given request.
     options.CheckConsentNeeded = context => true;
     options.MinimumSameSitePolicy = SameSiteMode.None;
 });
 
-// this environmet is for docker
 if (builder.Configuration["URLAPI"] != null)
 {
     builder.Services.AddHttpClient("client", client => { client.BaseAddress = new Uri(builder.Configuration["URLAPI"]); });
@@ -40,29 +38,22 @@ else
 
 var app = builder.Build();
 
-//if (env.IsDevelopment())
-//{
-//    app.UseDeveloperExceptionPage();
-//}
-
 app.UseExceptionHandler("/Error");
-// The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
 app.UseHsts();
-
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
-
 app.UseAuthorization();
 
 // Map health check endpoint
 app.MapHealthChecks("/health");
 
-app.UseEndpoints(endpoints =>
-{
-    endpoints.MapRazorPages();
-});
+// Explicit root mapping to avoid 404s at GET /
+app.MapGet("/", () => Results.Redirect("/Index"));
+
+// Modern endpoint routing for Razor Pages
+app.MapRazorPages();
 
 app.Run();
