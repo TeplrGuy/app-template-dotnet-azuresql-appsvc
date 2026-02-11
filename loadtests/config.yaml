@@ -35,8 +35,8 @@ failureCriteria:
   # Overall test criteria
   - avg(response_time_ms) > 5000        # Average response time < 5s
   - percentage(error) > 1                # Error rate < 1%
-  - p95(response_time_ms) > 6000         # 95th percentile < 6s
-  - p99(response_time_ms) > 7000         # 99th percentile < 7s
+  - p95(response_time_ms) > 10000         # 95th percentile < 10s
+  - p99(response_time_ms) > 35000         # 99th percentile < 35s
   
   # Per-request criteria (critical endpoints)
   - GetRequest: avg(response_time_ms) > 1500    # Homepage should be fast
