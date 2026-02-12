@@ -9,7 +9,7 @@ export const apiClient = {
     return response.json();
   },
 
-  async post(endpoint: string, data: any) {
+  async post(endpoint: string, data: unknown) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
