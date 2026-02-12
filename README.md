@@ -1,7 +1,17 @@
 # .NET MVC Web app, Azure SQL
+
+> **🎉 NEW:** This repository now includes a **React TypeScript frontend** and **Node.js API** with natural language search powered by GitHub Copilot SDK integration. See [Architecture Update](./docs/ARCHITECTURE-UPDATE.md) for details.
+
 ## Introduction
 
 Contoso University is a sample application that demonstrates how to use Entity Framework Core in an ASP.NET Core Razor Pages web app. This app can be deployed to Microsoft's Azure cloud platform that allows you to build, deploy, and scale web apps.
+
+**Latest Updates:**
+- ✅ **React Frontend** (TypeScript + Vite) for modern SPA experience
+- ✅ **Node.js API** (TypeScript + Express) with natural language student search
+- ✅ **CI/CD Guardrails** including CodeQL security scanning, Dependabot, and comprehensive testing
+- ✅ **Manual Deployment Approvals** for QA and Production environments
+- ✅ **Staging-first deployment** strategy with automatic rollback
 
 This sample application is structured in a way to be compatible with [Azure Developer CLI (azd) ](https://github.com/Azure/azure-dev/) which are currently in preview.
 
@@ -11,28 +21,75 @@ This sample application is structured in a way to be compatible with [Azure Deve
 
 ## Tech stack:
 
-- Azure
-- Azure-sql-db
-- .NET MVC Web
-- Github Actions
-- App Insights
-- Log Analytics
-- Bicep
-- Azure Key Vault
+### Backend
+- .NET 6 (Razor Pages + Web API)
+- Node.js 18+ with TypeScript (Express API)
+- Azure SQL Database
+
+### Frontend
+- React 19 with TypeScript
+- Vite build tooling
+- Original .NET Razor Pages
+
+### Infrastructure & DevOps
+- Azure App Services (for all applications)
+- GitHub Actions (CI/CD pipelines)
+- CodeQL (security analysis)
+- Dependabot (dependency management)
+- Azure App Insights (monitoring)
+- Log Analytics (centralized logging)
 - Azure Load Testing
+- Azure Key Vault
+- Bicep (Infrastructure as Code)
 
 ## Application Architecture
-This application utilizes the following Azure resources:
 
-- Azure App Services to host the Web frontend and API backend
+> **See [Architecture Update](./docs/ARCHITECTURE-UPDATE.md) for complete details on the new React frontend and Node.js API.**
+
+This application now consists of multiple components:
+
+### Application Components
+- **React Frontend** - Modern SPA built with React 19, TypeScript, and Vite
+- **Node.js API** - Express-based API with natural language search capabilities
+- **.NET Web App** - Original Razor Pages application
+- **. NET API** - Original Web API backend
+
+### Azure Resources
+- Azure App Services to host all frontend and backend applications
 - Azure SQL DB for storage
 - Azure App Insights for monitoring 
-- Log Analystics for logging
-- Load Testing to generate high-scale load and simulates traffic for the web app
+- Log Analytics for centralized logging
+- Azure Load Testing to generate high-scale load and simulate traffic
+- Azure Key Vault for secrets management
 
-Here's a high level architecture diagram that illustrates these components. Notice that these are all contained within a single resource group, that will be created for you when you create the resources.
+Here's a high level architecture diagram that illustrates the original components:
 
 ![alt text](https://github.com/Azure-Samples/app-templates-dotnet-azuresql-appservice/blob/main/assets/ASP.NET%20SQL%20app%20template.jpg)
+
+**For the updated architecture with React and Node.js components, see [Architecture Update](./docs/ARCHITECTURE-UPDATE.md).**
+
+## Quick Start
+
+### Local Development (New Stack)
+
+**React Frontend:**
+```bash
+cd src/contoso-frontend
+npm install
+npm run dev  # Runs on http://localhost:5173
+```
+
+**Node.js API:**
+```bash
+cd src/contoso-api-node
+npm install
+cp .env.example .env  # Configure database connection
+npm run dev  # Runs on http://localhost:3000
+```
+
+### Local Development (Original .NET Stack)
+
+See the "Using azd" section below for the original .NET application setup.
 
 ## Prerequisites
 - Local shell with Azure CLI installed or [Azure Cloud Shell](https://ms.portal.azure.com/#cloudshell/)
@@ -202,6 +259,34 @@ Run the following command:
 resourceGroup=rg-ContosoUniversityDemo
 az group delete --name $resourceGroup
 ```
+
+## Documentation
+
+### New Features
+- [Architecture Update](./docs/ARCHITECTURE-UPDATE.md) - Complete overview of React frontend and Node.js API
+- [Deployment Guide](./docs/DEPLOYMENT-GUIDE.md) - Manual approval workflow and deployment procedures
+- [Frontend README](./src/contoso-frontend/README.md) - React application setup and development
+- [Node API README](./src/contoso-api-node/README.md) - Node.js API setup and endpoints
+
+### Existing Documentation
+- [SRE Knowledge Base](./docs/SRE-KNOWLEDGE-BASE.md) - Operational runbooks and troubleshooting
+- [GitHub Actions Workflows](./.github/workflows/) - CI/CD pipeline configuration
+- [Pull Request Template](./.github/PULL_REQUEST_TEMPLATE.md) - PR checklist with security focus
+
+## CI/CD and Security
+
+### Continuous Integration
+- **Build and Test**: Automated testing for .NET, React, and Node.js on every PR
+- **Linting**: ESLint for TypeScript, code formatting checks
+- **CodeQL Analysis**: Security vulnerability scanning (weekly + on PRs)
+- **Dependabot**: Automated dependency updates for npm and NuGet
+
+### Deployment Strategy
+- **Staging**: Automatic deployment on merge to `main` (no approval required)
+- **QA**: Manual workflow_dispatch with required reviewer approval
+- **Production**: Manual workflow_dispatch with senior reviewer approval + automatic rollback
+
+See [Deployment Guide](./docs/DEPLOYMENT-GUIDE.md) for complete details.
 
 
 ## Next steps
