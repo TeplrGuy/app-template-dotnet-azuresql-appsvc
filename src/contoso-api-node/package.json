@@ -1,0 +1,39 @@
+{
+  "name": "contoso-api-node",
+  "version": "1.0.0",
+  "description": "Node.js API for Contoso University with GitHub Copilot SDK integration",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "nodemon --exec ts-node src/index.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "echo 'Linting not configured yet' && exit 0"
+  },
+  "keywords": ["contoso", "api", "copilot", "express"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@github/copilot-sdk": "^0.1.23",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "mssql": "^12.2.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/mssql": "^9.1.9",
+    "@types/node": "^25.2.3",
+    "@types/supertest": "^6.0.3",
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
