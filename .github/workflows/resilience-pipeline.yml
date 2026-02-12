@@ -11,8 +11,9 @@ name: 🚀 Deployment Pipeline - React Frontend & Node.js API
 #
 # 📊 DEPLOYMENT STRATEGY:
 # - Push to main → Automatic deployment to STAGING ONLY
-# - QA deployment → Manual approval required (workflow_dispatch)
-# - Production deployment → Manual approval required (workflow_dispatch)
+# - Staging deployment → Manual workflow_dispatch from ANY BRANCH (with approval)
+# - QA deployment → Manual workflow_dispatch from ANY BRANCH (with approval)
+# - Production deployment → Manual workflow_dispatch from MAIN BRANCH ONLY (with approval)
 #
 # =============================================================================
 
@@ -173,14 +174,14 @@ jobs:
           path: ./publish/api-dotnet/
 
 # =============================================================================
-# JOB: DEPLOY TO STAGING (Automatic on push to main)
+# JOB: DEPLOY TO STAGING (Automatic on push to main, or manual from any branch)
 # =============================================================================
   deploy-staging:
     name: 🌍 Deploy to Staging
     needs: [build-frontend, build-api-node]
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') || 
-      github.event.inputs.environment == 'staging'
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -237,12 +238,12 @@ jobs:
           echo "Node API: Ready for deployment (configure Azure App Service)"
 
 # =============================================================================
-# JOB: DEPLOY TO QA (Manual approval required)
+# JOB: DEPLOY TO QA (Manual approval required, any branch)
 # =============================================================================
   deploy-qa:
     name: 🧪 Deploy to QA
     needs: [build-frontend, build-api-node]
-    if: github.event.inputs.environment == 'qa'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'qa'
     runs-on: ubuntu-latest
     environment:
       name: qa  # GitHub Environment "qa" must have required reviewers
@@ -273,12 +274,15 @@ jobs:
           echo "Configure QA deployment steps as needed"
 
 # =============================================================================
-# JOB: DEPLOY TO PRODUCTION (Manual approval required)
+# JOB: DEPLOY TO PRODUCTION (Manual approval required, main branch only)
 # =============================================================================
   deploy-production:
     name: 🚀 Deploy to Production
     needs: [build-frontend, build-api-node]
-    if: github.event.inputs.environment == 'production'
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      github.event.inputs.environment == 'production' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: production  # GitHub Environment "production" must have required reviewers

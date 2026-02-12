@@ -6,11 +6,11 @@ The Contoso University deployment pipeline has been refactored to require **manu
 
 ## Deployment Strategy
 
-| Environment | Trigger | Approval Required | Purpose |
-|-------------|---------|-------------------|---------|
-| **Staging** | Push to `main` | ❌ No | Default target for all merged PRs |
-| **QA** | workflow_dispatch | ✅ Yes | Testing and validation |
-| **Production** | workflow_dispatch | ✅ Yes | Production release |
+| Environment | Trigger | Branch Restriction | Approval Required | Purpose |
+|-------------|---------|-------------------|-------------------|---------|
+| **Staging** | Push to `main` OR workflow_dispatch | Any branch for manual | ❌ No | Default target for all merged PRs, testing feature branches |
+| **QA** | workflow_dispatch | Any branch | ✅ Yes | Testing and validation from any branch |
+| **Production** | workflow_dispatch | Main branch only | ✅ Yes | Production release (security: main only) |
 
 ### Workflow Behavior
 
@@ -43,40 +43,58 @@ graph TD
 
 **No manual action required!**
 
-### Manual Deployment to QA
+### Manual Deployment to Staging (from any branch)
 
-**When:** You want to test in QA environment
+**When:** You want to test a feature branch in Staging environment
 
 1. Go to **Actions** tab in GitHub
-2. Select **🚀 Enterprise Resilience Pipeline**
+2. Select **🚀 Deployment Pipeline - React Frontend & Node.js API**
 3. Click **Run workflow**
 4. Select:
-   - Branch: `main`
+   - Branch: **Your feature branch** (e.g., `copilot/refactor-contoso-app-react-frontend`)
+   - Environment: `staging`
+   - Deploy component: `all` (or specific component)
+5. Click **Run workflow**
+6. **Wait for approval if required** (depends on GitHub Environment settings)
+7. Deployment proceeds to Staging
+
+**Note:** This allows testing feature branches in Staging before merging to main.
+
+### Manual Deployment to QA (from any branch)
+
+**When:** You want to test a feature branch in QA environment
+
+1. Go to **Actions** tab in GitHub
+2. Select **🚀 Deployment Pipeline - React Frontend & Node.js API**
+3. Click **Run workflow**
+4. Select:
+   - Branch: **Your feature branch** (e.g., `copilot/refactor-contoso-app-react-frontend`)
    - Environment: `qa`
-   - Run load tests: `true` (recommended)
+   - Deploy component: `all` (or specific component)
 5. Click **Run workflow**
 6. **Wait for approval notification**
 7. Approver reviews and approves
 8. Deployment proceeds to QA
 
-### Manual Deployment to Production
+**Note:** You can test feature branches in QA before merging to main!
 
-**When:** You want to promote Staging to Production
+### Manual Deployment to Production (main branch only)
+
+**When:** You want to promote main branch to Production
 
 **Prerequisites:**
-- Code must already be deployed to Staging
-- Load tests must have passed on Staging
+- Code must be on the **main branch** (feature branches cannot deploy to production)
 - All required approvals must be obtained
 
 **Steps:**
 
 1. Go to **Actions** tab in GitHub
-2. Select **🚀 Enterprise Resilience Pipeline**
+2. Select **🚀 Deployment Pipeline - React Frontend & Node.js API**
 3. Click **Run workflow**
 4. Select:
-   - Branch: `main`
+   - Branch: **`main`** (required for production)
    - Environment: `production`
-   - Run load tests: `false` (already tested in Staging)
+   - Deploy component: `all`
 5. Click **Run workflow**
 6. **Wait for approval notification**
 7. Approver reviews and approves
@@ -96,6 +114,18 @@ To enable manual approvals, configure GitHub Environments:
    - Add team members who can approve QA deployments
    - Recommend: QA lead, team lead
 4. **Wait timer**: 0 minutes (optional: add delay if needed)
+5. **Deployment branches**: Leave blank to allow any branch (recommended for QA/Staging)
+6. Save protection rules
+
+**Note:** QA and Staging can be deployed from any branch to enable feature branch testing before merging to main.
+
+### Setting Up Staging Environment Protection
+
+1. Go to **Settings** → **Environments**
+2. Click **New environment** (or edit existing `staging`)
+3. Optional: Add **Required reviewers** if you want manual approval for staging
+   - Leave empty for automatic deployment on push to main
+4. **Deployment branches**: Leave blank to allow any branch for workflow_dispatch
 5. Save protection rules
 
 ### Setting Up Production Environment Protection
@@ -106,13 +136,46 @@ To enable manual approvals, configure GitHub Environments:
    - Add senior team members who can approve Production
    - Recommend: Tech lead, product owner, SRE on-call
 4. **Wait timer**: 0 minutes (optional: add delay for change freeze windows)
-5. **Deployment branches**: Limit to `main` only
+5. **Deployment branches**: **Limit to `main` only** (security requirement)
 6. Save protection rules
+
+**Important:** Production deployments are restricted to the main branch for security. Only QA and Staging allow feature branch deployments.
 
 ### Staging Environment
 
-- **No protection rules** - allows automatic deployment
-- Staging is the proving ground before production
+- **No strict protection rules** - allows automatic deployment from main
+- **For manual deployments:** Can be triggered from any branch via workflow_dispatch
+- Staging is the proving ground for both main branch and feature branches
+
+## Feature Branch Testing
+
+**New Capability:** You can now deploy feature branches to Staging and QA environments for testing before merging to main!
+
+### Benefits
+- ✅ Test your changes in a real environment before merging
+- ✅ Validate integrations with Azure services
+- ✅ Run validation on feature branches
+- ✅ Get early feedback from QA team
+
+### How to Deploy a Feature Branch
+
+1. Push your feature branch to GitHub
+2. Go to **Actions** → **Deployment Pipeline - React Frontend & Node.js API**
+3. Click **Run workflow**
+4. Select your **feature branch** from the dropdown (e.g., `copilot/refactor-contoso-app-react-frontend`)
+5. Choose environment: `staging` or `qa`
+6. Approve if required (based on Environment protection rules)
+7. Test your feature in the deployed environment
+
+### Best Practices
+- Deploy to **Staging** first for initial validation
+- Deploy to **QA** only after staging tests pass
+- Clean up: Re-deploy main branch to environments after feature testing
+- Document test results in PR comments
+
+### Important Restrictions
+- ✅ **Staging & QA**: Can deploy from any branch
+- ❌ **Production**: Can ONLY deploy from `main` branch (security)
 
 ## Approval Workflow
 
@@ -123,18 +186,19 @@ When a deployment requires your approval:
 1. You'll receive a **notification email**
 2. Go to the GitHub Actions run page
 3. Review the changes:
-   - Check the PR that triggered this
+   - **Check which branch is being deployed** (feature or main)
    - Review test results
    - Verify staging is healthy (if deploying to prod)
 4. Click **Review deployments**
 5. Select environment to approve
-6. Add comment (optional but recommended)
+6. Add comment (optional but recommended - especially note the branch)
 7. Click **Approve and deploy**
 
 ### For Requesters
 
 Best practices when requesting approval:
 
+- **Clearly identify the branch** being deployed (feature vs main)
 - Include context in the workflow run description
 - Ensure all tests pass before requesting approval
 - Have rollback plan ready
