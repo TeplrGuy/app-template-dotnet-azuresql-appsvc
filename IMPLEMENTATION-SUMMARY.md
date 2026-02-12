@@ -7,8 +7,27 @@ This PR successfully refactors the Contoso University application to include:
 2. A Node.js TypeScript API with natural language search
 3. Comprehensive CI/CD guardrails
 4. Manual approval workflow for deployments
+5. **Cleanup of old .NET Razor Pages project (removed)**
 
 ## Changes Made
+
+### 0. **NEW** - Cleanup of Old Projects
+
+**Removed old .NET projects:**
+- Deleted `src/ContosoUniversity.WebApplication/` - Old Razor Pages frontend (replaced by React)
+- Deleted `src/ContosoUniversity.Test/` - Placeholder tests
+- Deleted `src/ContosoUniversity.CodedUITest/` - UI tests for old web app
+- Deleted `src/ContosoUniversity.sln` - Solution file
+- Deleted `src/Local.testsettings` - Test settings
+- **Kept** `src/ContosoUniversity.API/` - .NET API (optional legacy support)
+
+**Updated resilience-pipeline.yml:**
+- Replaced .NET build job with React + Node.js builds
+- Removed old .NET WebApplication deployment steps
+- Simplified pipeline to focus on modern stack
+- Maintained manual approval workflow for QA and Production
+
+**Result:** Pipeline now only builds React frontend and Node.js API by default. .NET API can be built optionally via workflow_dispatch parameter.
 
 ### 1. React Frontend (`src/contoso-frontend/`)
 
@@ -192,14 +211,21 @@ This PR successfully refactors the Contoso University application to include:
 
 ## Breaking Changes
 
-None. All existing functionality remains intact:
-- .NET Web Application still works
-- .NET API still works
-- Existing workflows still work
+**UPDATE:** Old .NET Razor Pages project has been removed:
+- ❌ `src/ContosoUniversity.WebApplication/` - REMOVED (replaced by React frontend)
+- ❌ `src/ContosoUniversity.Test/` - REMOVED (placeholder tests)
+- ❌ `src/ContosoUniversity.CodedUITest/` - REMOVED (UI tests for old app)
+- ❌ `src/ContosoUniversity.sln` - REMOVED
+- ✅ `src/ContosoUniversity.API/` - KEPT (optional legacy backend support)
+
+**Impact:**
+- Existing .NET Razor Pages frontend no longer available
+- Must use React frontend for UI
+- .NET API still available as alternative backend
 - No database schema changes
 - No infrastructure changes required
 
-The new components are additions, not replacements.
+The old components have been replaced with modern equivalents.
 
 ## Migration Path
 
@@ -341,12 +367,18 @@ New App Services needed (or configure existing):
 
 ## Conclusion
 
-This implementation successfully modernizes the Contoso University application while maintaining backward compatibility. All deliverables have been completed:
+This implementation successfully modernizes the Contoso University application with a complete migration from .NET Razor Pages to React. All deliverables have been completed:
 
 ✅ React TypeScript frontend
 ✅ Node.js TypeScript API with natural language search
 ✅ Comprehensive CI/CD guardrails
 ✅ Manual deployment approvals
 ✅ Complete documentation
+✅ Old .NET projects cleaned up
+
+**Current Stack:**
+- **Frontend:** React 19 + TypeScript + Vite
+- **API:** Node.js + TypeScript + Express (primary)
+- **Legacy API:** .NET 6 Web API (optional)
 
 The application is ready for deployment to staging and subsequent promotion to QA and Production via the manual approval workflow.
