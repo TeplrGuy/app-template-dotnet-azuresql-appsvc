@@ -18,9 +18,11 @@ name: 🚀 Enterprise Resilience Pipeline
 # - Staging: Full chaos experiments (pre-prod validation)
 # - Production: Optional, controlled experiments with minimal blast radius
 #
-# 🔄 DEPLOYMENT STRATEGY:
-# - Progressive rollout with health checks
-# - Automated rollback on failure
+# =============================================================================
+# DEPLOYMENT STRATEGY (UPDATED):
+# - Push to main → Automatic deployment to STAGING ONLY
+# - QA deployment → Manual approval required (workflow_dispatch or PR)
+# - Production deployment → Manual approval required (workflow_dispatch only)
 # - Slot swap for zero-downtime deployments
 # =============================================================================
 
@@ -150,12 +152,13 @@ jobs:
 # JOB: DEPLOY TO QA (Development/Integration Testing)
 # =============================================================================
   deploy-qa:
-    name: 🧪 Deploy to QA
+    name: 🧪 Deploy to QA (Manual Approval Required)
     needs: build
-    if: github.event_name == 'pull_request' || github.event.inputs.environment == 'qa'
+    # QA requires manual trigger via workflow_dispatch or PRs
+    if: github.event.inputs.environment == 'qa' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     environment:
-      name: qa
+      name: qa  # GitHub Environment "qa" must have required reviewers configured
       url: ${{ steps.deploy.outputs.webapp-url }}
     
     outputs:
@@ -304,15 +307,16 @@ jobs:
 # Best Practice: Staging should mirror production
 # =============================================================================
   deploy-staging:
-    name: 🌍 Deploy to Staging
+    name: 🌍 Deploy to Staging (Default - No Approval Required)
     needs: build
+    # Staging: Automatic on push to main, or manual via workflow_dispatch
+    # This is the DEFAULT deployment target
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') || 
-      github.event.inputs.environment == 'staging' ||
-      github.event.inputs.environment == 'production'
+      github.event.inputs.environment == 'staging'
     runs-on: ubuntu-latest
     environment:
-      name: staging
+      name: staging  # No required reviewers - automatic deployment
       url: ${{ steps.deploy.outputs.webapp-url }}
     
     outputs:
@@ -729,14 +733,16 @@ jobs:
 # Best Practice: Slot swap for zero-downtime + automatic rollback
 # =============================================================================
   deploy-production:
-    name: 🚀 Deploy to Production
+    name: 🚀 Deploy to Production (Manual Approval Required)
     needs: [deploy-staging, load-test-staging]
+    # Production: ONLY via manual workflow_dispatch trigger
+    # GitHub Environment "production" must have required reviewers configured
     if: |
       github.ref == 'refs/heads/main' && 
-      (github.event_name == 'push' || github.event.inputs.environment == 'production')
+      github.event.inputs.environment == 'production'
     runs-on: ubuntu-latest
     environment:
-      name: production
+      name: production  # GitHub Environment "production" must have required reviewers
       url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
     
     steps:

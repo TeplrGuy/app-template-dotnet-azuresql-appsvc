@@ -1,0 +1,193 @@
+name: CI - Build and Test All Projects
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '6.0.x'
+  NODE_VERSION: '18.x'
+
+jobs:
+  # =============================================================================
+  # JOB: .NET Build and Test
+  # =============================================================================
+  dotnet-build-test:
+    name: 🔨 .NET Build & Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 📦 Restore dependencies
+        run: dotnet restore src/ContosoUniversity.sln
+
+      - name: 🏗️ Build application
+        run: dotnet build src/ContosoUniversity.sln --configuration Release --no-restore
+
+      - name: 🧪 Run unit tests
+        run: |
+          dotnet test src/ContosoUniversity.Test/ContosoUniversity.Test.csproj \
+            --configuration Release \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory TestResults \
+            --logger "trx;LogFileName=test-results.trx"
+
+      - name: 📊 Publish test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dotnet-test-results
+          path: TestResults/
+
+      - name: ✅ .NET Check Complete
+        run: echo "✅ .NET build and tests passed"
+
+  # =============================================================================
+  # JOB: Frontend Build, Lint, and Test
+  # =============================================================================
+  frontend-build-test:
+    name: ⚛️ Frontend Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/contoso-frontend
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/contoso-frontend/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🎨 Lint code
+        run: npm run lint
+
+      - name: 🏗️ Build application
+        run: npm run build
+
+      - name: 🧪 Run tests
+        run: npm test
+
+      - name: 📦 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/contoso-frontend/dist/
+
+      - name: ✅ Frontend Check Complete
+        run: echo "✅ Frontend build, lint, and tests passed"
+
+  # =============================================================================
+  # JOB: Node API Build, Lint, and Test
+  # =============================================================================
+  api-build-test:
+    name: 🔌 Node API Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/contoso-api-node
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/contoso-api-node/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🎨 Lint code
+        run: npm run lint
+
+      - name: 🏗️ Build application
+        run: npm run build
+
+      - name: 🧪 Run tests
+        run: npm test -- --coverage
+
+      - name: 📊 Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: src/contoso-api-node/coverage/
+
+      - name: 📦 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-dist
+          path: src/contoso-api-node/dist/
+
+      - name: ✅ API Check Complete
+        run: echo "✅ Node API build, lint, and tests passed"
+
+  # =============================================================================
+  # JOB: Summary and Status Check
+  # =============================================================================
+  ci-summary:
+    name: 📋 CI Summary
+    needs: [dotnet-build-test, frontend-build-test, api-build-test]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🎯 CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔨 .NET Projects | ${{ needs.dotnet-build-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⚛️ React Frontend | ${{ needs.frontend-build-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔌 Node.js API | ${{ needs.api-build-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.dotnet-build-test.result }}" == "success" ] && \
+             [ "${{ needs.frontend-build-test.result }}" == "success" ] && \
+             [ "${{ needs.api-build-test.result }}" == "success" ]; then
+            echo "### ✅ All checks passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Some checks failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: ✅ All Checks Passed
+        if: |
+          needs.dotnet-build-test.result == 'success' &&
+          needs.frontend-build-test.result == 'success' &&
+          needs.api-build-test.result == 'success'
+        run: echo "✅ All CI checks passed successfully!"
+
+      - name: ❌ Some Checks Failed
+        if: |
+          needs.dotnet-build-test.result != 'success' ||
+          needs.frontend-build-test.result != 'success' ||
+          needs.api-build-test.result != 'success'
+        run: |
+          echo "❌ Some CI checks failed. Please review the logs above."
+          exit 1
